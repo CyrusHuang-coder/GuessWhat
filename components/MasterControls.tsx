@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { AnswerType, GameStateDTO } from '@/lib/types/game';
-import { CheckCircle2, XCircle, HelpCircle, MessageSquare, X, Sparkles, Loader2 } from 'lucide-react';
+import { CheckCircle2, XCircle, HelpCircle, MessageSquare, X, Sparkles, Loader2, Lightbulb } from 'lucide-react';
 
 interface Props {
   state: GameStateDTO;
@@ -27,6 +27,14 @@ export function MasterControls({ state, roomCode, playerToken }: Props) {
     explanation: string;
   } | null>(null);
   const [factError, setFactError] = useState<string | null>(null);
+
+  // 提示线索兑换处理状态
+  const [hintInput, setHintInput] = useState('');
+  const [submittingHint, setSubmittingHint] = useState(false);
+  const [suggestingHintAI, setSuggestingHintAI] = useState(false);
+
+  // 待处理的提示申请
+  const pendingHint = state.hints?.find((h) => h.status === 'pending');
 
   // 待回答的问题
   const pendingQuestion = questions.find(
@@ -151,11 +159,187 @@ export function MasterControls({ state, roomCode, playerToken }: Props) {
     }
   };
 
+  // 出题人确认提供线索（累加相应提问次数）
+  const handleProvideHint = async () => {
+    if (!pendingHint || !hintInput.trim() || submittingHint) return;
+    setSubmittingHint(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/rooms/${roomCode}/hints`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-player-token': playerToken,
+        },
+        body: JSON.stringify({
+          action: 'provide',
+          hintId: pendingHint.id,
+          hintText: hintInput.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      setHintInput('');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSubmittingHint(false);
+    }
+  };
+
+  // 婉拒猜词人的线索申请
+  const handleRejectHint = async () => {
+    if (!pendingHint || submittingHint) return;
+    if (!window.confirm('确定要婉拒猜词人的本次提示申请吗？')) return;
+    setSubmittingHint(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/rooms/${roomCode}/hints`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-player-token': playerToken,
+        },
+        body: JSON.stringify({
+          action: 'reject',
+          hintId: pendingHint.id,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSubmittingHint(false);
+    }
+  };
+
+  // 出题人让 AI 协助构思合适价值力度的线索
+  const handleAISuggestHint = async () => {
+    if (!pendingHint || suggestingHintAI) return;
+    setSuggestingHintAI(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/rooms/${roomCode}/hints`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-player-token': playerToken,
+        },
+        body: JSON.stringify({
+          action: 'ai_suggest',
+          cost: pendingHint.cost,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      if (data.suggestion) {
+        setHintInput(data.suggestion);
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSuggestingHintAI(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
       {error && (
         <div className="p-2.5 bg-status-errBg text-status-err text-xs rounded-game-sm border border-status-errBorder">
           {error}
+        </div>
+      )}
+
+      {/* 0. 待处理的线索提示申请 */}
+      {pendingHint && (
+        <div className="p-4 bg-gradient-to-r from-amber-50 via-orange-50/70 to-warm-bg border-2 border-amber-300 rounded-game shadow-board space-y-3 animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center justify-between pb-2 border-b border-amber-200">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-game-sm bg-amber-500 text-white shadow-2xs">
+                <Lightbulb className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="text-sm font-black text-amber-950 flex items-center gap-2">
+                  <span>猜词人申请线索提示</span>
+                  <span className="px-2 py-0.5 rounded-full text-xs font-black bg-amber-200 text-amber-900 border border-amber-300">
+                    价值 {pendingHint.cost} 次提问机会
+                  </span>
+                </div>
+                <div className="text-[11px] text-amber-800/80 mt-0.5">
+                  对方自愿消耗 {pendingHint.cost} 次提问。发送提示后，有效问答次数将<strong>自动累加 {pendingHint.cost} 次</strong>。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-ink-text">
+                填写拟提供给对方的线索内容：
+              </label>
+              <button
+                type="button"
+                onClick={handleAISuggestHint}
+                disabled={suggestingHintAI}
+                className="text-xs text-amber-900 hover:text-black font-bold px-2 py-1 bg-amber-100/90 hover:bg-amber-200 border border-amber-300 rounded transition flex items-center gap-1 disabled:opacity-50"
+                title="根据秘密词条与价值梯度智能拟定线索草稿"
+              >
+                {suggestingHintAI ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-700" />
+                    <span>AI 构思中...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span>AI 协助构思此价值线索</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <textarea
+              value={hintInput}
+              onChange={(e) => setHintInput(e.target.value)}
+              placeholder={`例（${pendingHint.cost === 1 ? '微弱提示' : pendingHint.cost === 3 ? '中度线索' : '关键大线索'}）：给出关于“${session.secret_word}”的适当范围线索，绝不可直接说出词条名...`}
+              rows={3}
+              maxLength={120}
+              className="w-full p-2.5 text-xs bg-white border border-amber-300 rounded-game-sm focus:outline-none focus:ring-2 focus:ring-amber-500 text-ink-text leading-relaxed"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleRejectHint}
+              disabled={submittingHint}
+              className="px-3 py-2 text-xs font-bold text-ink-muted hover:text-ink-text hover:bg-warm-bg rounded-game-sm border border-warm-border transition"
+            >
+              婉拒申请
+            </button>
+            <button
+              type="button"
+              onClick={handleProvideHint}
+              disabled={submittingHint || !hintInput.trim()}
+              className="flex-1 py-2 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 disabled:opacity-40 text-white font-black text-xs rounded-game-sm shadow transition flex items-center justify-center gap-1.5"
+            >
+              {submittingHint ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>发送中...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>确认发送该线索 (+{pendingHint.cost}次提问计数)</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       )}
 
@@ -342,9 +526,9 @@ export function MasterControls({ state, roomCode, playerToken }: Props) {
       )}
 
       {/* 无待处理事件时的占位 */}
-      {!pendingGuess && !pendingQuestion && (
+      {!pendingGuess && !pendingQuestion && !pendingHint && (
         <div className="text-center py-6 text-xs text-ink-subtle bg-white rounded-game border border-dashed border-warm-border">
-          出题人就绪 · 等待猜词人提问或发起正式猜词...
+          出题人就绪 · 等待猜词人提问、申请提示或发起正式猜词...
         </div>
       )}
 

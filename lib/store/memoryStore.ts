@@ -5,6 +5,8 @@ import {
   GameSession,
   GameStateDTO,
   Guess,
+  HintCost,
+  HintExchange,
   MatchHistoryItem,
   OffTrackEvaluation,
   PlayerRole,
@@ -30,6 +32,7 @@ export class MemoryRoomStore implements IRoomStore {
   private currentSessionByRoom: Map<string, string> = new Map(); // key: roomCode, value: sessionId
   private questionsBySession: Map<string, Question[]> = new Map();
   private guessesBySession: Map<string, Guess[]> = new Map();
+  private hintsBySession: Map<string, HintExchange[]> = new Map();
   private offTrackEvaluationsBySession: Map<string, OffTrackEvaluation[]> = new Map();
   private matchHistoryByRoom: Map<string, MatchHistoryItem[]> = new Map();
 
@@ -88,6 +91,7 @@ export class MemoryRoomStore implements IRoomStore {
     this.currentSessionByRoom.set(code, sessionId);
     this.questionsBySession.set(sessionId, []);
     this.guessesBySession.set(sessionId, []);
+    this.hintsBySession.set(sessionId, []);
     this.offTrackEvaluationsBySession.set(sessionId, []);
     this.matchHistoryByRoom.set(code, []);
 
@@ -159,6 +163,7 @@ export class MemoryRoomStore implements IRoomStore {
     const session = sessionId ? this.sessions.get(sessionId) : null;
     const questions = sessionId ? this.questionsBySession.get(sessionId) || [] : [];
     const guesses = sessionId ? this.guessesBySession.get(sessionId) || [] : [];
+    const hints = sessionId ? this.hintsBySession.get(sessionId) || [] : [];
     const offTrackEvaluations = sessionId
       ? this.offTrackEvaluationsBySession.get(sessionId) || []
       : [];
@@ -204,6 +209,7 @@ export class MemoryRoomStore implements IRoomStore {
       session: sanitizedSession,
       questions: [...questions],
       guesses: [...guesses],
+      hints: [...hints],
       offTrackEvaluations: visibleEvaluations,
       matchHistory: [...matchHistory],
       myRole,
@@ -630,6 +636,7 @@ export class MemoryRoomStore implements IRoomStore {
     this.currentSessionByRoom.set(uppercaseCode, newSessionId);
     this.questionsBySession.set(newSessionId, []);
     this.guessesBySession.set(newSessionId, []);
+    this.hintsBySession.set(newSessionId, []);
     this.offTrackEvaluationsBySession.set(newSessionId, []);
 
     realtimeBroadcaster.notify(uppercaseCode, 'NEXT_ROUND_STARTED');
@@ -690,6 +697,119 @@ export class MemoryRoomStore implements IRoomStore {
     session.off_track_enabled = enabled;
     realtimeBroadcaster.notify(uppercaseCode, 'OFF_TRACK_TOGGLED');
     return { ...session };
+  }
+
+  async requestHint(code: string, playerToken: string, cost: HintCost): Promise<HintExchange> {
+    const uppercaseCode = code.toUpperCase();
+    const sessionId = this.currentSessionByRoom.get(uppercaseCode);
+    if (!sessionId) throw new Error('对局未初始化');
+    const session = this.sessions.get(sessionId)!;
+
+    if (session.guesser_id !== playerToken) {
+      throw new Error('只有猜词人可以申请线索提示');
+    }
+    if (session.status !== 'playing') {
+      throw new Error('当前对局状态不在进行中，无法申请提示');
+    }
+
+    if (session.mode === 'challenge') {
+      const remaining = session.max_questions - session.completed_questions_count;
+      if (remaining < cost) {
+        throw new Error(`当前挑战模式仅剩 ${Math.max(0, remaining)} 次提问机会，不足以支付价值 ${cost} 次的线索`);
+      }
+    }
+
+    const sessionHints = this.hintsBySession.get(sessionId) || [];
+    const hasPending = sessionHints.some((h) => h.status === 'pending');
+    if (hasPending) {
+      throw new Error('当前已有正在等待出题人回应的提示申请，请勿重复申请');
+    }
+
+    const hint: HintExchange = {
+      id: crypto.randomUUID(),
+      session_id: sessionId,
+      room_id: session.room_id,
+      cost,
+      status: 'pending',
+      hint_text: null,
+      requested_at: new Date().toISOString(),
+      responded_at: null,
+    };
+
+    sessionHints.push(hint);
+    this.hintsBySession.set(sessionId, sessionHints);
+
+    realtimeBroadcaster.notify(uppercaseCode, 'HINT_REQUESTED');
+    return { ...hint };
+  }
+
+  async provideHint(
+    code: string,
+    playerToken: string,
+    hintId: string,
+    hintText: string
+  ): Promise<{ hint: HintExchange; session: GameSession }> {
+    const uppercaseCode = code.toUpperCase();
+    const sessionId = this.currentSessionByRoom.get(uppercaseCode);
+    if (!sessionId) throw new Error('对局未初始化');
+    const session = this.sessions.get(sessionId)!;
+
+    if (session.question_master_id !== playerToken) {
+      throw new Error('只有出题人可以提供线索提示');
+    }
+    if (session.status !== 'playing') {
+      throw new Error('当前对局状态不在进行中');
+    }
+
+    const sessionHints = this.hintsBySession.get(sessionId) || [];
+    const hint = sessionHints.find((h) => h.id === hintId);
+    if (!hint) {
+      throw new Error('未找到该提示申请记录');
+    }
+    if (hint.status !== 'pending') {
+      throw new Error('该提示申请已被处理');
+    }
+
+    const cleanedText = hintText.trim();
+    if (!cleanedText) {
+      throw new Error('线索内容不能为空');
+    }
+
+    hint.hint_text = cleanedText;
+    hint.status = 'provided';
+    hint.responded_at = new Date().toISOString();
+
+    // 核心机制：累加已完成问题次数（价值 1、3、5 次）
+    session.completed_questions_count += hint.cost;
+
+    realtimeBroadcaster.notify(uppercaseCode, 'HINT_PROVIDED');
+    return { hint: { ...hint }, session: { ...session } };
+  }
+
+  async rejectHint(code: string, playerToken: string, hintId: string): Promise<HintExchange> {
+    const uppercaseCode = code.toUpperCase();
+    const sessionId = this.currentSessionByRoom.get(uppercaseCode);
+    if (!sessionId) throw new Error('对局未初始化');
+    const session = this.sessions.get(sessionId)!;
+
+    if (session.question_master_id !== playerToken && session.guesser_id !== playerToken) {
+      throw new Error('无权操作该提示申请');
+    }
+
+    const sessionHints = this.hintsBySession.get(sessionId) || [];
+    const hint = sessionHints.find((h) => h.id === hintId);
+    if (!hint) {
+      throw new Error('未找到该提示申请记录');
+    }
+    if (hint.status !== 'pending') {
+      throw new Error('该提示申请已被处理');
+    }
+
+    hint.status = 'rejected';
+    hint.responded_at = new Date().toISOString();
+
+    realtimeBroadcaster.notify(uppercaseCode, 'HINT_REJECTED');
+    return { ...hint };
   }
 
   private recordMatchHistory(roomCode: string, session: GameSession): void {

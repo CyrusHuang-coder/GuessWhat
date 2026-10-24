@@ -308,6 +308,7 @@ export default function RoomPage({ params }: PageProps) {
               <QuestionTimeline
                 questions={gameState.questions}
                 guesses={gameState.guesses}
+                hints={gameState.hints}
                 completedCount={session.completed_questions_count}
                 maxQuestions={session.max_questions}
                 isChallengeMode={session.mode === 'challenge'}

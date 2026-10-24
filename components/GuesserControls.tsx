@@ -9,9 +9,12 @@ import {
   AlertTriangle,
   Flag,
   X,
+  Lightbulb,
+  Loader2,
 } from 'lucide-react';
 import { GuesserSidebar } from './GuesserSidebar';
 import { VoiceInputButton } from './VoiceInputButton';
+import { HintCost } from '@/lib/types/game';
 
 interface Props {
   state: GameStateDTO;
@@ -54,9 +57,17 @@ export function GuesserControls({
   // 移动端专用 AI 抽屉
   const [showMobileAIDrawer, setShowMobileAIDrawer] = useState(false);
 
+  // 提示线索兑换状态
+  const [showHintModal, setShowHintModal] = useState(false);
+  const [selectedCost, setSelectedCost] = useState<HintCost>(3);
+  const [submittingHint, setSubmittingHint] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
 
   if (session?.status !== 'playing') return null;
+
+  // 待处理的提示申请
+  const pendingHint = state.hints?.find((h) => h.status === 'pending');
 
   // 状态检查
   const hasPendingQuestion = questions.some(
@@ -66,6 +77,55 @@ export function GuesserControls({
   const isChallenge = session.mode === 'challenge';
   const isQuestionQuotaExhausted =
     isChallenge && session.completed_questions_count >= session.max_questions;
+
+  // 申请线索提示
+  const handleRequestHint = async () => {
+    if (submittingHint || pendingHint) return;
+    setSubmittingHint(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/rooms/${roomCode}/hints`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-player-token': playerToken,
+        },
+        body: JSON.stringify({ action: 'request', cost: selectedCost }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      setShowHintModal(false);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSubmittingHint(false);
+    }
+  };
+
+  // 撤回线索申请
+  const handleCancelHint = async () => {
+    if (!pendingHint || submittingHint) return;
+    setSubmittingHint(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/rooms/${roomCode}/hints`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-player-token': playerToken,
+        },
+        body: JSON.stringify({ action: 'reject', hintId: pendingHint.id }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setSubmittingHint(false);
+    }
+  };
 
   // 提交普通问题
   const handleSubmitQuestion = async (e: React.FormEvent) => {
@@ -207,6 +267,26 @@ export function GuesserControls({
         </form>
       )}
 
+      {/* 待处理的提示申请提示条 */}
+      {pendingHint && (
+        <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-game-sm flex items-center justify-between gap-2 shadow-2xs">
+          <div className="flex items-center gap-2 text-xs font-bold text-amber-950">
+            <Loader2 className="w-4 h-4 animate-spin text-amber-600 shrink-0" />
+            <span>
+              已向出题人申请【价值 {pendingHint.cost} 次提问】的线索提示，等待对方回应中...
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={handleCancelHint}
+            disabled={submittingHint}
+            className="text-xs px-2.5 py-1 bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 rounded font-semibold transition shrink-0 shadow-2xs"
+          >
+            {submittingHint ? '撤回中...' : '撤回申请'}
+          </button>
+        </div>
+      )}
+
       {/* 2. 主操作条：提问输入框 + 独立正式猜词入口 */}
       <div className="bg-white p-3 rounded-game border border-warm-border shadow-board space-y-2">
         <div className="flex flex-col sm:flex-row items-center gap-2">
@@ -250,6 +330,18 @@ export function GuesserControls({
               <span>提问</span>
             </button>
           </form>
+
+          {/* 申请提示按钮 */}
+          <button
+            type="button"
+            onClick={() => setShowHintModal(true)}
+            disabled={!!pendingHint || isQuestionQuotaExhausted}
+            className="w-full sm:w-auto px-3.5 py-2.5 bg-amber-50 hover:bg-amber-100 active:bg-amber-200 text-amber-900 border border-amber-300 font-bold text-sm rounded-game-sm shadow-2xs flex items-center justify-center gap-1.5 shrink-0 transition disabled:opacity-50"
+            title="以提问次数向出题人兑换专属线索提示"
+          >
+            <Lightbulb className="w-4 h-4 text-amber-600" />
+            <span>申请提示</span>
+          </button>
 
           {/* 独立正式猜词按钮 */}
           <button
@@ -344,6 +436,129 @@ export function GuesserControls({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 3.5 申请线索提示弹窗 */}
+      {showHintModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-game-lg max-w-md w-full p-6 shadow-2xl border border-warm-border animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-warm-border mb-3">
+              <div className="flex items-center gap-2 text-amber-600">
+                <Lightbulb className="w-5 h-5" />
+                <h3 className="text-base font-black text-ink-text">向出题人申请线索提示</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHintModal(false)}
+                className="text-ink-subtle hover:text-ink-text p-1 rounded-full"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <p className="text-xs text-ink-muted leading-relaxed mb-4">
+              遇到思路瓶颈？您可以消耗提问机会向出题人兑换一条关键线索。<strong>出题人提供线索后，本局问题次数将自动累加相应点数</strong>。
+            </p>
+
+            {/* 3 个梯度卡片单选 */}
+            <div className="space-y-2.5 mb-5">
+              {[
+                {
+                  cost: 1 as const,
+                  title: '微弱提示',
+                  desc: '日常体验、宽泛场景或外围粗略属性，不涉及核心特征',
+                  badge: '消耗 1 次提问',
+                },
+                {
+                  cost: 3 as const,
+                  title: '中度线索',
+                  desc: '明确具体的次级分类、结构特征或功能用途，缩小搜索范围',
+                  badge: '消耗 3 次提问',
+                },
+                {
+                  cost: 5 as const,
+                  title: '关键大线索',
+                  desc: '决定性的标志特征、经典场景或核心标志，直击本质',
+                  badge: '消耗 5 次提问',
+                },
+              ].map((tier) => {
+                const disabled =
+                  isChallenge &&
+                  session.completed_questions_count + tier.cost > session.max_questions;
+                return (
+                  <button
+                    type="button"
+                    key={tier.cost}
+                    disabled={disabled}
+                    onClick={() => setSelectedCost(tier.cost)}
+                    className={`w-full p-3 rounded-game-sm border text-left transition flex items-start justify-between gap-3 ${
+                      selectedCost === tier.cost
+                        ? 'border-amber-500 bg-amber-50/80 ring-2 ring-amber-400'
+                        : 'border-warm-border hover:bg-warm-bg'
+                    } ${disabled ? 'opacity-40 cursor-not-allowed bg-warm-subtle' : ''}`}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-sm text-ink-text">{tier.title}</span>
+                        <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">
+                          {tier.badge}
+                        </span>
+                      </div>
+                      <div className="text-xs text-ink-muted mt-1 leading-relaxed">
+                        {tier.desc}
+                      </div>
+                      {disabled && (
+                        <div className="text-[11px] text-status-err font-medium mt-1">
+                          剩余提问额度不足以支付该线索
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                        selectedCost === tier.cost
+                          ? 'border-amber-600 bg-amber-600'
+                          : 'border-ink-subtle'
+                      }`}
+                    >
+                      {selectedCost === tier.cost && (
+                        <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowHintModal(false)}
+                className="flex-1 py-2.5 text-xs font-semibold text-ink-muted hover:bg-warm-bg rounded-game-sm transition"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                disabled={
+                  submittingHint ||
+                  (isChallenge &&
+                    session.completed_questions_count + selectedCost > session.max_questions)
+                }
+                onClick={handleRequestHint}
+                className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 disabled:opacity-50 text-white font-bold text-xs rounded-game-sm shadow transition flex items-center justify-center gap-1.5"
+              >
+                {submittingHint ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>提交申请中...</span>
+                  </>
+                ) : (
+                  <span>确认申请 (消耗 {selectedCost} 次提问)</span>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

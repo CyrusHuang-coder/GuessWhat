@@ -81,6 +81,20 @@ export interface Guess {
   created_at: string;
 }
 
+export type HintCost = 1 | 3 | 5;
+export type HintStatus = 'pending' | 'provided' | 'rejected';
+
+export interface HintExchange {
+  id: string;
+  session_id: string;
+  room_id: string;
+  cost: HintCost;
+  status: HintStatus;
+  hint_text: string | null;
+  requested_at: string;
+  responded_at: string | null;
+}
+
 export interface OffTrackEvaluation {
   id: string;
   session_id: string;
@@ -126,6 +140,7 @@ export interface GameStateDTO {
   session: GameSession | null;
   questions: Question[];
   guesses: Guess[];
+  hints: HintExchange[]; // 新增：线索提示兑换记录
   offTrackEvaluations: OffTrackEvaluation[]; // 仅猜词人可见
   matchHistory: MatchHistoryItem[];
   myRole: PlayerRole | 'spectator';

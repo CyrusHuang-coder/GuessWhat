@@ -569,4 +569,54 @@ export async function verifyQuestionFact(params: {
   }
 }
 
+/**
+ * 8.6 出题人线索生成顾问：根据猜词人申请的价值梯度（1、3、5个问题）以及秘密词条，智能拟定合适力度的线索
+ */
+export async function generateHintForMaster(params: {
+  secretWord: string;
+  theme: string;
+  cost: 1 | 3 | 5;
+  previousQuestions: { question: string; answer: string }[];
+}): Promise<string> {
+  if (!isAIConfigured()) {
+    throw new Error('MISSING_API_KEY: 未配置大模型密钥');
+  }
+
+  const costGuidance = {
+    1: '价值 1 个问题（微弱提示）：仅给出非常宽泛、日常体验或非核心边缘特征，如生活常见场景、物品大致体型或初步属性，绝对不可触及核心特质。',
+    3: '价值 3 个问题（中度线索）：给出较明确的次级分类、结构特征或功能用途，帮助猜词人缩小到某个具体领域或特定分支。',
+    5: '价值 5 个问题（关键大线索）：给出决定性的标志性线索、经典典故、名场面或核心辨识特征，直击本质，但绝对不可直接出现秘密词条本身（包括任何同义原词）！',
+  }[params.cost];
+
+  const systemPrompt = `你是一款双人猜词游戏中的出题人线索构思顾问。
+出题人的秘密词条是【${params.secretWord}】（归属主题：${params.theme}）。
+猜词人自愿消耗了【${params.cost} 次提问机会】来购买一条提示线索。
+请严格根据该提示的价值梯度，为出题人拟定一条表述自然、符合梯度的优质中文线索。`;
+
+  const userPrompt = `【秘密词条】${params.secretWord}
+【主题】${params.theme}
+【线索价值要求】${costGuidance}
+【已进行的问答参考】
+${params.previousQuestions.map((q, idx) => `${idx + 1}. 问: "${q.question}" -> 答: "${q.answer}"`).join('\n') || '暂无'}
+
+【构思要求】
+1. 语言简练，富有启发性，字数控制在 15~60 字以内；
+2. 绝对严禁直接暴露词条原名或同音字！
+3. 请以出题人直接口吻输出该线索。
+
+请直接以 JSON 格式输出：
+{
+  "hint": "线索内容文字"
+}`;
+
+  const jsonStr = await callLLM(systemPrompt, userPrompt, 0.4);
+  try {
+    const parsed = JSON.parse(jsonStr);
+    return String(parsed.hint || '').trim();
+  } catch (err: any) {
+    return cleanJsonOutput(jsonStr);
+  }
+}
+
+
 

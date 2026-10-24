@@ -135,6 +135,25 @@ export function SettlementModal({ state, roomCode, playerToken }: Props) {
           </div>
         </div>
 
+        {/* 提示兑换小结 */}
+        {(state.hints?.filter((h) => h.status === 'provided').length || 0) > 0 && (
+          <div className="mb-6 py-2 px-3.5 bg-amber-50/90 border border-amber-200 rounded-game-sm text-xs text-amber-900 flex items-center justify-between shadow-2xs">
+            <span>
+              💡 本局提示线索：共兑换{' '}
+              <strong>{state.hints?.filter((h) => h.status === 'provided').length}</strong> 条
+            </span>
+            <span className="font-bold">
+              折合消耗{' '}
+              <strong>
+                {state.hints
+                  ?.filter((h) => h.status === 'provided')
+                  .reduce((acc, h) => acc + h.cost, 0)}
+              </strong>{' '}
+              次提问机会
+            </span>
+          </div>
+        )}
+
         {/* 双方表现对称对比 (双方均担任过猜词人时解锁) */}
         {canCompare ? (
           <div className="mb-6 p-4 bg-sage-50/70 border border-sage-200 rounded-game space-y-3">

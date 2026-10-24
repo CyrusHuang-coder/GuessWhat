@@ -1,11 +1,12 @@
 'use client';
 
-import { Guess, Question } from '@/lib/types/game';
-import { HelpCircle, Target, CheckCircle2, XCircle, AlertCircle, Clock, MessageSquare } from 'lucide-react';
+import { Guess, HintExchange, Question } from '@/lib/types/game';
+import { HelpCircle, Target, CheckCircle2, XCircle, AlertCircle, Clock, MessageSquare, Lightbulb, Sparkles } from 'lucide-react';
 
 interface Props {
   questions: Question[];
   guesses: Guess[];
+  hints?: HintExchange[];
   completedCount: number;
   maxQuestions: number;
   isChallengeMode: boolean;
@@ -14,13 +15,17 @@ interface Props {
 export function QuestionTimeline({
   questions,
   guesses,
+  hints = [],
   completedCount,
   maxQuestions,
   isChallengeMode,
 }: Props) {
   type TimelineItem =
     | { type: 'question'; data: Question; time: number }
-    | { type: 'guess'; data: Guess; time: number };
+    | { type: 'guess'; data: Guess; time: number }
+    | { type: 'hint'; data: HintExchange; time: number };
+
+  const visibleHints = hints.filter((h) => h.status === 'provided');
 
   const items: TimelineItem[] = [
     ...questions.map((q) => ({
@@ -32,6 +37,11 @@ export function QuestionTimeline({
       type: 'guess' as const,
       data: g,
       time: new Date(g.created_at).getTime(),
+    })),
+    ...visibleHints.map((h) => ({
+      type: 'hint' as const,
+      data: h,
+      time: new Date(h.responded_at || h.requested_at).getTime(),
     })),
   ].sort((a, b) => a.time - b.time);
 
@@ -171,6 +181,31 @@ export function QuestionTimeline({
                         </span>
                       )}
                     </div>
+                  </div>
+                </div>
+              );
+            } else if (item.type === 'hint') {
+              // 提示线索兑换卡片 (温暖琥珀色风格，彰显价值梯度)
+              const h = item.data;
+              return (
+                <div
+                  key={`h-${h.id}`}
+                  className="p-3.5 rounded-game-sm border border-amber-300 bg-gradient-to-r from-amber-50/90 via-orange-50/60 to-warm-bg shadow-2xs space-y-2 animate-in fade-in duration-200"
+                >
+                  <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="p-1 rounded bg-amber-500 text-white shadow-2xs">
+                        <Lightbulb className="w-3.5 h-3.5" />
+                      </div>
+                      <span className="font-bold text-amber-950">线索提示兑换</span>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200/90 text-amber-900 border border-amber-300">
+                        消耗 {h.cost} 次提问机会
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-amber-700/80 font-medium">出题人已提供</span>
+                  </div>
+                  <div className="text-sm font-bold text-ink-text bg-white/90 p-2.5 rounded-game-sm border border-amber-200/70 leading-relaxed shadow-2xs">
+                    “{h.hint_text}”
                   </div>
                 </div>
               );

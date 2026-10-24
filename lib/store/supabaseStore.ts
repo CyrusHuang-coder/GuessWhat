@@ -6,6 +6,8 @@ import {
   GameSession,
   GameStateDTO,
   Guess,
+  HintCost,
+  HintExchange,
   MatchHistoryItem,
   OffTrackEvaluation,
   PlayerRole,
@@ -219,6 +221,7 @@ export class SupabaseRoomStore implements IRoomStore {
       session: sanitizedSession,
       questions,
       guesses,
+      hints: [],
       offTrackEvaluations: myRole === 'guesser' ? offTrackEvaluations : [],
       matchHistory: [],
       myRole,
@@ -564,5 +567,73 @@ export class SupabaseRoomStore implements IRoomStore {
     if (error) throw new Error(error.message);
     realtimeBroadcaster.notify(code.toUpperCase(), 'OFF_TRACK_TOGGLED');
     return updated;
+  }
+
+  async requestHint(code: string, playerToken: string, cost: HintCost): Promise<HintExchange> {
+    const state = await this.getRoomState(code, playerToken);
+    if (!state?.session) throw new Error('对局未初始化');
+    if (state.session.guesser_id !== playerToken) throw new Error('只有猜词人可以申请线索提示');
+
+    const hint: HintExchange = {
+      id: crypto.randomUUID(),
+      session_id: state.session.id,
+      room_id: state.room.id,
+      cost,
+      status: 'pending',
+      hint_text: null,
+      requested_at: new Date().toISOString(),
+      responded_at: null,
+    };
+    realtimeBroadcaster.notify(code.toUpperCase(), 'HINT_REQUESTED');
+    return hint;
+  }
+
+  async provideHint(
+    code: string,
+    playerToken: string,
+    hintId: string,
+    hintText: string
+  ): Promise<{ hint: HintExchange; session: GameSession }> {
+    const supabase = this.ensureClient();
+    const state = await this.getRoomState(code, playerToken);
+    if (!state?.session) throw new Error('对局未初始化');
+    if (state.session.question_master_id !== playerToken) throw new Error('只有出题人可以提供线索');
+
+    const newCount = state.session.completed_questions_count + 1;
+    const { data: session } = await supabase
+      .from('game_sessions')
+      .update({ completed_questions_count: newCount })
+      .eq('id', state.session.id)
+      .select()
+      .single();
+
+    const hint: HintExchange = {
+      id: hintId,
+      session_id: state.session.id,
+      room_id: state.room.id,
+      cost: 1,
+      status: 'provided',
+      hint_text: hintText,
+      requested_at: new Date().toISOString(),
+      responded_at: new Date().toISOString(),
+    };
+    realtimeBroadcaster.notify(code.toUpperCase(), 'HINT_PROVIDED');
+    return { hint, session: session || state.session };
+  }
+
+  async rejectHint(code: string, playerToken: string, hintId: string): Promise<HintExchange> {
+    const state = await this.getRoomState(code, playerToken);
+    const hint: HintExchange = {
+      id: hintId,
+      session_id: state?.session?.id || '',
+      room_id: state?.room?.id || '',
+      cost: 1,
+      status: 'rejected',
+      hint_text: null,
+      requested_at: new Date().toISOString(),
+      responded_at: new Date().toISOString(),
+    };
+    realtimeBroadcaster.notify(code.toUpperCase(), 'HINT_REJECTED');
+    return hint;
   }
 }

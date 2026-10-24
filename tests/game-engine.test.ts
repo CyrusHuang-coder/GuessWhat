@@ -186,5 +186,87 @@ describe('游戏状态机与规则核心流程测试', () => {
     expect(stateRound2?.session?.guesser_id).toBe(hostToken);
     expect(stateRound2?.myRole).toBe('guesser'); // 张三此时是猜词人
   });
+
+  it('提示线索交易机制：猜词人申请价值1、3、5个问题的提示，出题人提供后提问次数正确累加', async () => {
+    const { room, playerToken: hostToken } = await store.createRoom('出题人');
+    const { playerToken: guestToken } = await store.joinRoom(room.code, '猜词人');
+
+    await store.saveSettings(room.code, guestToken, {
+      theme: '生物',
+      difficulty: 'medium',
+      mode: 'normal',
+    });
+    await store.setWord(room.code, hostToken, { word: '水熊虫' });
+
+    // 初始问答数 0
+    let state = await store.getRoomState(room.code, guestToken);
+    expect(state?.session?.completed_questions_count).toBe(0);
+
+    // 1. 猜词人申请价值 3 次提问的提示
+    const hintReq = await store.requestHint(room.code, guestToken, 3);
+    expect(hintReq.status).toBe('pending');
+    expect(hintReq.cost).toBe(3);
+
+    // 2. 出题人提供相应线索
+    const { hint: providedHint, session } = await store.provideHint(
+      room.code,
+      hostToken,
+      hintReq.id,
+      '它属于缓步动物门，具有极强的隐生耐寒能力'
+    );
+    expect(providedHint.status).toBe('provided');
+    expect(providedHint.hint_text).toContain('缓步动物门');
+
+    // 验证：有效问答计数自动累加 3 次！
+    expect(session.completed_questions_count).toBe(3);
+
+    // 再次从状态获取验证
+    state = await store.getRoomState(room.code, guestToken);
+    expect(state?.session?.completed_questions_count).toBe(3);
+    expect(state?.hints).toHaveLength(1);
+    expect(state?.hints[0].status).toBe('provided');
+
+    // 3. 猜词人再申请价值 1 次提问的提示
+    const hintReq2 = await store.requestHint(room.code, guestToken, 1);
+    const { session: session2 } = await store.provideHint(
+      room.code,
+      hostToken,
+      hintReq2.id,
+      '体型微小，肉眼几乎不可见'
+    );
+    // 3 + 1 = 4
+    expect(session2.completed_questions_count).toBe(4);
+  });
+
+  it('提示线索交易在挑战模式下的余额约束与拒绝机制', async () => {
+    const { room, playerToken: hostToken } = await store.createRoom('出题人');
+    const { playerToken: guestToken } = await store.joinRoom(room.code, '挑战者');
+
+    // 挑战模式，最大 3 次提问
+    await store.saveSettings(room.code, guestToken, {
+      theme: '植物',
+      difficulty: 'hard',
+      mode: 'challenge',
+      maxQuestions: 3,
+    });
+    await store.setWord(room.code, hostToken, { word: '捕蝇草' });
+
+    // 尝试申请价值 5 个问题的线索 -> 剩余 3 < 5，应抛出异常
+    await expect(store.requestHint(room.code, guestToken, 5)).rejects.toThrow(
+      '不足以支付价值 5 次的线索'
+    );
+
+    // 申请价值 3 次的线索 -> 允许
+    const hint = await store.requestHint(room.code, guestToken, 3);
+    expect(hint.status).toBe('pending');
+
+    // 出题人婉拒该申请
+    const rejectedHint = await store.rejectHint(room.code, hostToken, hint.id);
+    expect(rejectedHint.status).toBe('rejected');
+
+    // 验证：婉拒后不累加提问次数
+    const state = await store.getRoomState(room.code, guestToken);
+    expect(state?.session?.completed_questions_count).toBe(0);
+  });
 });
 

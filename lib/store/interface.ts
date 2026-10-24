@@ -5,6 +5,8 @@ import {
   GameSession,
   GameStateDTO,
   Guess,
+  HintCost,
+  HintExchange,
   OffTrackEvaluation,
   Question,
   Room,
@@ -92,5 +94,16 @@ export interface IRoomStore {
   useAIQuota(code: string, playerToken: string): Promise<boolean>;
 
   toggleOffTrack(code: string, playerToken: string, enabled: boolean): Promise<GameSession>;
+
+  requestHint(code: string, playerToken: string, cost: HintCost): Promise<HintExchange>;
+
+  provideHint(
+    code: string,
+    playerToken: string,
+    hintId: string,
+    hintText: string
+  ): Promise<{ hint: HintExchange; session: GameSession }>;
+
+  rejectHint(code: string, playerToken: string, hintId: string): Promise<HintExchange>;
 }
 
