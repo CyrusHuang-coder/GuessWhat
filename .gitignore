@@ -34,3 +34,7 @@ Thumbs.db
 # Testing & Coverage
 coverage/
 
+# Local tunnel state
+.tunnel_subdomain
+scripts/.tunnel_subdomain
+
