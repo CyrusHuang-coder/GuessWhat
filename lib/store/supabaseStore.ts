@@ -472,7 +472,7 @@ export class SupabaseRoomStore implements IRoomStore {
   async nextRoundAction(
     code: string,
     playerToken: string,
-    action: 'swap_roles' | 'keep_roles' | 'end_game'
+    action: 'swap_roles' | 'keep_roles' | 'end_game' | 'restart_game'
   ): Promise<Room> {
     const supabase = this.ensureClient();
     const state = await this.getRoomState(code, playerToken);
@@ -488,6 +488,8 @@ export class SupabaseRoomStore implements IRoomStore {
       realtimeBroadcaster.notify(code.toUpperCase(), 'GAME_ENDED');
       return r;
     }
+
+    await supabase.from('rooms').update({ status: 'in_game' }).eq('id', state.room.id);
 
     const qm = action === 'swap_roles' ? state.session.guesser_id : state.session.question_master_id;
     const gs = action === 'swap_roles' ? state.session.question_master_id : state.session.guesser_id;

@@ -78,7 +78,7 @@ export interface IRoomStore {
   nextRoundAction(
     code: string,
     playerToken: string,
-    action: 'swap_roles' | 'keep_roles' | 'end_game'
+    action: 'swap_roles' | 'keep_roles' | 'end_game' | 'restart_game'
   ): Promise<Room>;
 
   saveOffTrackEvaluation(

@@ -268,5 +268,53 @@ describe('游戏状态机与规则核心流程测试', () => {
     const state = await store.getRoomState(room.code, guestToken);
     expect(state?.session?.completed_questions_count).toBe(0);
   });
+
+  it('同一房间连续多局测试：交换角色开启新一轮，历史对局与大比分累积，复活已结束房间', async () => {
+    const { room, playerToken: hostToken } = await store.createRoom('玩家A');
+    const { playerToken: guestToken } = await store.joinRoom(room.code, '玩家B');
+
+    // 第 1 局
+    await store.saveSettings(room.code, guestToken, { theme: '科技', difficulty: 'easy', mode: 'normal' });
+    await store.setWord(room.code, hostToken, { word: '智能手机' });
+    const g1 = await store.submitGuess(room.code, guestToken, '智能手机');
+    await store.adjudicateGuess(room.code, hostToken, g1.id, 'correct');
+
+    let state = await store.getRoomState(room.code, hostToken);
+    expect(state?.session?.status).toBe('settled');
+    expect(state?.session?.round_number).toBe(1);
+    expect(state?.matchHistory).toHaveLength(1);
+
+    // 交换角色进入第 2 局 (不建新房，不换链接)
+    await store.nextRoundAction(room.code, hostToken, 'swap_roles');
+
+    state = await store.getRoomState(room.code, hostToken);
+    expect(state?.room.status).toBe('in_game');
+    expect(state?.session?.round_number).toBe(2);
+    expect(state?.session?.status).toBe('setting_selection');
+    // 角色互换：此时 玩家A (hostToken) 变成了猜词人，玩家B (guestToken) 变成了出题人
+    expect(state?.session?.guesser_id).toBe(hostToken);
+    expect(state?.session?.question_master_id).toBe(guestToken);
+
+    // 玩家A作为猜词人提交设置
+    await store.saveSettings(room.code, hostToken, { theme: '历史', difficulty: 'easy', mode: 'normal' });
+    await store.setWord(room.code, guestToken, { word: '秦始皇' });
+    const g2 = await store.submitGuess(room.code, hostToken, '汉武帝');
+    await store.adjudicateGuess(room.code, guestToken, g2.id, 'incorrect');
+    await store.surrender(room.code, hostToken);
+
+    state = await store.getRoomState(room.code, hostToken);
+    expect(state?.matchHistory).toHaveLength(2);
+
+    // 结束游戏
+    await store.nextRoundAction(room.code, hostToken, 'end_game');
+    state = await store.getRoomState(room.code, hostToken);
+    expect(state?.room.status).toBe('ended');
+
+    // 复活房间继续游戏
+    await store.nextRoundAction(room.code, hostToken, 'restart_game');
+    state = await store.getRoomState(room.code, hostToken);
+    expect(state?.room.status).toBe('in_game');
+    expect(state?.session?.round_number).toBe(3);
+  });
 });
 

@@ -200,6 +200,10 @@ export function SettlementModal({ state, roomCode, playerToken }: Props) {
 
         {/* 三大操作按钮 */}
         <div className="space-y-2">
+          <div className="text-center text-[11px] text-sage-700 bg-sage-50 py-1 px-3 rounded border border-sage-200 mb-3">
+            ✨ <strong>常驻房间机制</strong>：无需退出或重新分享链接，任选一种模式点击后，双方手机将<strong>自动同步进入第 {session.round_number + 1} 局</strong>！
+          </div>
+
           <button
             type="button"
             onClick={() => handleAction('swap_roles')}
@@ -207,7 +211,7 @@ export function SettlementModal({ state, roomCode, playerToken }: Props) {
             className="w-full py-3.5 bg-sage-500 hover:bg-sage-600 active:bg-sage-700 disabled:opacity-50 text-white font-bold text-sm rounded-game-sm shadow transition flex items-center justify-center gap-2"
           >
             <Repeat className="w-4 h-4" />
-            <span>交换角色再来一局 (出题人 ⇋ 猜词人)</span>
+            <span>{submittingAction ? '正在为双方同步开启新一局...' : '交换角色再来一局 (出题人 ⇋ 猜词人)'}</span>
           </button>
 
           <button
@@ -222,11 +226,15 @@ export function SettlementModal({ state, roomCode, playerToken }: Props) {
 
           <button
             type="button"
-            onClick={() => handleAction('end_game')}
+            onClick={() => {
+              if (window.confirm('确定要解散当前房间吗？解散后双方需要返回首页重新开局。')) {
+                handleAction('end_game');
+              }
+            }}
             disabled={submittingAction}
             className="w-full py-2 text-ink-subtle hover:text-ink-text text-xs transition"
           >
-            结束本次游戏
+            解散本次房间
           </button>
         </div>
       </div>

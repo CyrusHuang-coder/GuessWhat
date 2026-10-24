@@ -572,7 +572,7 @@ export class MemoryRoomStore implements IRoomStore {
   async nextRoundAction(
     code: string,
     playerToken: string,
-    action: 'swap_roles' | 'keep_roles' | 'end_game'
+    action: 'swap_roles' | 'keep_roles' | 'end_game' | 'restart_game'
   ): Promise<Room> {
     const uppercaseCode = code.toUpperCase();
     const room = this.rooms.get(uppercaseCode);
@@ -580,7 +580,8 @@ export class MemoryRoomStore implements IRoomStore {
 
     const sessionId = this.currentSessionByRoom.get(uppercaseCode);
     const session = sessionId ? this.sessions.get(sessionId) : null;
-    if (!session || session.status !== 'settled') {
+
+    if (action !== 'restart_game' && (!session || session.status !== 'settled')) {
       throw new Error('只有当本局结算完成后才能开始下一轮');
     }
 
@@ -594,14 +595,17 @@ export class MemoryRoomStore implements IRoomStore {
       return { ...room };
     }
 
+    // 复活或保持房间进行中
+    room.status = 'in_game';
+
     // 开启新一局
     const newSessionId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    let newQuestionMasterId = session.question_master_id;
-    let newGuesserId = session.guesser_id;
+    let newQuestionMasterId = session ? session.question_master_id : room.host_player_id;
+    let newGuesserId = session ? session.guesser_id : (room.guest_player_id || '');
 
-    if (action === 'swap_roles') {
+    if (action === 'swap_roles' && session) {
       newQuestionMasterId = session.guesser_id;
       newGuesserId = session.question_master_id;
     }
@@ -609,7 +613,7 @@ export class MemoryRoomStore implements IRoomStore {
     const nextSession: GameSession = {
       id: newSessionId,
       room_id: room.id,
-      round_number: session.round_number + 1,
+      round_number: (session ? session.round_number : 0) + 1,
       status: 'setting_selection',
       question_master_id: newQuestionMasterId,
       guesser_id: newGuesserId,

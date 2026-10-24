@@ -469,7 +469,7 @@ export class KvRoomStore implements IRoomStore {
   async nextRoundAction(
     code: string,
     playerToken: string,
-    action: 'swap_roles' | 'keep_roles' | 'end_game'
+    action: 'swap_roles' | 'keep_roles' | 'end_game' | 'restart_game'
   ): Promise<Room> {
     const data = await this.getStored(code);
     if (!data || !data.session) throw new Error('对局未初始化');
@@ -481,6 +481,9 @@ export class KvRoomStore implements IRoomStore {
       realtimeBroadcaster.notify(code.toUpperCase(), 'GAME_ENDED');
       return { ...data.room };
     }
+
+    data.room.status = 'in_game';
+    data.room.updated_at = new Date().toISOString();
 
     const newSessionId = crypto.randomUUID();
     const now = new Date().toISOString();

@@ -18,6 +18,24 @@ export function RoomHeader({ state }: Props) {
   const [showInstallModal, setShowInstallModal] = useState(false);
   const { room, session, isHost, opponentOnline } = state;
 
+  // 计算双方历史大比分
+  const hostNick = room.host_nickname;
+  const guestNick = room.guest_nickname;
+  let hostWins = 0;
+  let guestWins = 0;
+
+  (state.matchHistory || []).forEach((m) => {
+    if (m.result === 'guessed') {
+      if (m.guesser_nickname === hostNick) hostWins++;
+      else if (m.guesser_nickname === guestNick) guestWins++;
+    } else if (m.result === 'surrendered') {
+      if (m.question_master_nickname === hostNick) hostWins++;
+      else if (m.question_master_nickname === guestNick) guestWins++;
+    }
+  });
+
+  const totalMatches = (state.matchHistory || []).length;
+
   const copyInviteLink = () => {
     const url = `${window.location.origin}/room/${room.code}`;
     navigator.clipboard.writeText(url);
@@ -88,6 +106,14 @@ export function RoomHeader({ state }: Props) {
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-ink-muted mt-0.5">
               <span>第 {session?.round_number ?? 1} 局</span>
+              {totalMatches > 0 && (
+                <>
+                  <span>•</span>
+                  <span className="font-bold text-amber-900 bg-amber-100/90 border border-amber-200 px-1.5 py-0.2 rounded text-[10px]">
+                    比分 {hostWins} : {guestWins}
+                  </span>
+                </>
+              )}
               {session?.theme && (
                 <>
                   <span>•</span>

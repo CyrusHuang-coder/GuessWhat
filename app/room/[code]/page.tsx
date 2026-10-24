@@ -188,6 +188,25 @@ export default function RoomPage({ params }: PageProps) {
     }
   };
 
+  // 在当前房间直接重新开局（复活房间）
+  const handleRestartInCurrentRoom = async () => {
+    try {
+      const res = await fetch(`/api/rooms/${code}/round/action`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-player-token': playerToken,
+        },
+        body: JSON.stringify({ action: 'restart_game' }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      fetchState();
+    } catch (err: any) {
+      alert(`重新开局失败: ${err.message}`);
+    }
+  };
+
   const copyInvite = () => {
     navigator.clipboard.writeText(window.location.href);
     setCopiedLink(true);
@@ -387,14 +406,23 @@ export default function RoomPage({ params }: PageProps) {
         {room.status === 'ended' && (
           <div className="my-auto py-12 text-center max-w-md mx-auto bg-white p-8 rounded-game border border-warm-border shadow-board space-y-4">
             <h2 className="text-xl font-bold text-ink-text">本次游戏已结束</h2>
-            <p className="text-xs text-ink-muted">感谢游玩「GuessWhat」，您可以返回首页发起新的对局。</p>
-            <button
-              type="button"
-              onClick={() => router.push('/')}
-              className="w-full py-3 bg-sage-500 hover:bg-sage-600 text-white font-bold text-xs rounded-game-sm transition"
-            >
-              返回首页
-            </button>
+            <p className="text-xs text-ink-muted">无需重新建房或重新发送链接，点击下方即可在当前房间开启全新对局！</p>
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                onClick={handleRestartInCurrentRoom}
+                className="w-full py-3 bg-sage-500 hover:bg-sage-600 active:bg-sage-700 text-white font-bold text-xs rounded-game-sm shadow transition flex items-center justify-center gap-1.5"
+              >
+                <span>🔄 在当前房间直接重新开局</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push('/')}
+                className="w-full py-2.5 bg-warm-bg hover:bg-warm-subtle text-ink-muted text-xs font-semibold rounded-game-sm transition"
+              >
+                返回首页
+              </button>
+            </div>
           </div>
         )}
       </main>
