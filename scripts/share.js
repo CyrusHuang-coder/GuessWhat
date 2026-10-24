@@ -68,9 +68,9 @@ async function getTunnelPassword() {
 function generateFriendLauncher(publicUrl, password, lanUrl) {
   const batContent = `@echo off
 chcp 65001 >nul
-title 浮出水面 (Surface) —— 双人实时在线猜词
+title GuessWhat —— 双人实时在线猜词
 echo ========================================================
-echo       正在以独立软件窗口打开「浮出水面 (Surface)」游戏...
+echo       正在以独立软件窗口打开「GuessWhat」游戏...
 echo ========================================================
 echo 联机服务器: ${publicUrl}
 echo.
@@ -158,7 +158,7 @@ async function connectTunnel(subdomain, password) {
 
 async function main() {
   console.log('\n================================================================');
-  console.log('       浮出水面 (Surface) —— 双人在线联机与自愈守护引擎');
+  console.log('       GuessWhat —— 双人在线联机与自愈守护引擎');
   console.log('================================================================\n');
 
   // 1. 检查或启动本地服务

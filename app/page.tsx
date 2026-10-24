@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { EngineBadge } from '@/components/EngineBadge';
 import { SurfaceLogo } from '@/components/SurfaceLogo';
-import { Sparkles, Users, ArrowRight, ShieldCheck, Zap, HelpCircle } from 'lucide-react';
+import { Sparkles, Users, ArrowRight, ShieldCheck, Zap, HelpCircle, Smartphone } from 'lucide-react';
+import { InstallPwaModal } from '@/components/InstallPwaModal';
 
 export default function HomePage() {
   const router = useRouter();
@@ -17,6 +18,7 @@ export default function HomePage() {
   const [joining, setJoining] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+  const [showInstallModal, setShowInstallModal] = useState(false);
 
   // 创建房间
   const handleCreateRoom = async (e: React.FormEvent) => {
@@ -228,12 +230,29 @@ export default function HomePage() {
             </div>
           </div>
         </div>
+        {/* 存为手机桌面 App 按钮 */}
+        <div className="mt-8 text-center">
+          <button
+            type="button"
+            onClick={() => setShowInstallModal(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-sage-50 hover:bg-sage-100 text-sage-700 text-xs font-semibold border border-sage-200 shadow-2xs transition"
+          >
+            <Smartphone className="w-3.5 h-3.5 text-sage-600" />
+            <span>保存到手机桌面 App（iOS & 安卓免商店）</span>
+          </button>
+        </div>
       </div>
 
       {/* 页脚说明 */}
       <footer className="text-center text-xs text-ink-subtle py-6">
-        浮出水面 (Surface) · 双人实时在线猜词 · 免注册即开即玩
+        GuessWhat · 双人实时在线猜词 · 免注册即开即玩
       </footer>
+
+      {/* PWA 桌面安装引导弹窗 */}
+      <InstallPwaModal
+        isOpen={showInstallModal}
+        onClose={() => setShowInstallModal(false)}
+      />
     </main>
   );
 }

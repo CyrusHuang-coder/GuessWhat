@@ -246,7 +246,7 @@ export default function RoomPage({ params }: PageProps) {
             <h2 className="text-lg font-bold text-ink-text">受邀加入游戏房间</h2>
           </div>
           <p className="text-xs text-ink-muted mb-4 leading-relaxed">
-            房主 <strong className="text-ink-text">{gameState.room.host_nickname}</strong> 邀请你加入「浮出水面 (Surface)」双人猜词对局（房间码：<span className="font-mono font-bold text-sage-700">{code}</span>）。
+            房主 <strong className="text-ink-text">{gameState.room.host_nickname}</strong> 邀请你加入「GuessWhat」双人猜词对局（房间码：<span className="font-mono font-bold text-sage-700">{code}</span>）。
           </p>
 
           {error && (
@@ -387,7 +387,7 @@ export default function RoomPage({ params }: PageProps) {
         {room.status === 'ended' && (
           <div className="my-auto py-12 text-center max-w-md mx-auto bg-white p-8 rounded-game border border-warm-border shadow-board space-y-4">
             <h2 className="text-xl font-bold text-ink-text">本次游戏已结束</h2>
-            <p className="text-xs text-ink-muted">感谢游玩「浮出水面」，您可以返回首页发起新的对局。</p>
+            <p className="text-xs text-ink-muted">感谢游玩「GuessWhat」，您可以返回首页发起新的对局。</p>
             <button
               type="button"
               onClick={() => router.push('/')}

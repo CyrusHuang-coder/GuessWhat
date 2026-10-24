@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { GameStateDTO } from '@/lib/types/game';
-import { Copy, Check, AlertTriangle, ArrowLeft } from 'lucide-react';
+import { Copy, Check, AlertTriangle, ArrowLeft, Smartphone } from 'lucide-react';
 import { EngineBadge } from './EngineBadge';
 import { SurfaceLogo } from './SurfaceLogo';
+import { InstallPwaModal } from './InstallPwaModal';
 
 interface Props {
   state: GameStateDTO;
@@ -14,6 +15,7 @@ interface Props {
 export function RoomHeader({ state }: Props) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
+  const [showInstallModal, setShowInstallModal] = useState(false);
   const { room, session, isHost, opponentOnline } = state;
 
   const copyInviteLink = () => {
@@ -74,7 +76,7 @@ export function RoomHeader({ state }: Props) {
           <SurfaceLogo size="sm" showText={false} />
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="font-bold text-ink-text text-base">浮出水面</h1>
+              <h1 className="font-bold text-ink-text text-base">GuessWhat</h1>
               <button
                 onClick={copyInviteLink}
                 className="flex items-center gap-1 px-2.5 py-0.5 rounded-game-sm bg-warm-subtle hover:bg-warm-border text-ink-text text-xs font-mono font-medium transition border border-warm-border"
@@ -148,9 +150,22 @@ export function RoomHeader({ state }: Props) {
             </div>
           </div>
 
+          <button
+            onClick={() => setShowInstallModal(true)}
+            className="p-1.5 rounded-game-sm bg-warm-subtle hover:bg-warm-border text-ink-muted hover:text-ink-text border border-warm-border transition"
+            title="存为手机桌面 App"
+          >
+            <Smartphone className="w-3.5 h-3.5" />
+          </button>
+
           <EngineBadge />
         </div>
       </div>
+
+      <InstallPwaModal
+        isOpen={showInstallModal}
+        onClose={() => setShowInstallModal(false)}
+      />
     </header>
   );
 }

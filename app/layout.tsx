@@ -10,8 +10,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  title: '浮出水面 (Surface) —— 双人实时在线猜词',
-  description: '让藏在水下的秘密逐层浮现。双人实时在线是非推理猜词游戏。',
+  title: 'GuessWhat —— 双人实时在线猜词',
+  description: '双人实时在线是非推理猜词游戏。',
   manifest: '/manifest.json',
   icons: {
     icon: '/icon.svg',
@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: '浮出水面',
+    title: 'GuessWhat',
   },
 };
 

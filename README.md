@@ -1,7 +1,7 @@
-# 🌊 浮出水面 (Surface) —— 双人实时在线是非推理猜词游戏
+# 🌊 GuessWhat —— 双人实时在线是非推理猜词游戏
 
 <p align="center">
-  <img src="public/icon.svg" width="128" height="128" alt="浮出水面 Logo" />
+  <img src="public/icon.svg" width="128" height="128" alt="GuessWhat Logo" />
 </p>
 
 <p align="center">
@@ -67,7 +67,7 @@ npm run dev
 
 ### 方式 A：房主一键生成公网链接（最推荐）
 在项目根目录中，直接双击运行：
-👉 **`[房主启动] 运行浮出水面并生成联机公网链接.bat`** *(或在终端输入 `npm run share`)*
+👉 **`[房主启动] 运行GuessWhat并生成联机公网链接.bat`** *(或在终端输入 `npm run share`)*
 
 1. 控制台会在几秒内打印出专属公网地址，例如：
    ```text
@@ -115,7 +115,7 @@ GuessWhat/
 │   ├── room/[code]/      # 游戏房间对局主页面
 │   └── page.tsx          # 游戏首页大厅
 ├── components/           # 页面 UI 组件
-│   ├── SurfaceLogo.tsx   # 「浮出水面」高定矢量几何 Logo
+│   ├── SurfaceLogo.tsx   # 「GuessWhat」高定矢量几何 Logo
 │   ├── GuesserControls.tsx # 猜词人操作控制台与语音输入
 │   ├── MasterControls.tsx  # 出题人回答与澄清仲裁台
 │   ├── WordSelectionModal.tsx # 出题人设词与 AI 灵感换一批
@@ -126,7 +126,7 @@ GuessWhat/
 │   └── store/            # 存储引擎 (本地极速内存+SSE广播 / Supabase)
 ├── public/               # 静态资源 (高清矢量图标、PWA manifest)
 ├── scripts/share.js      # 公网联机穿透与好友启动器自动生成脚本
-├── [房主启动] 运行浮出水面并生成联机公网链接.bat # 房主一键公网联机启动器
+├── [房主启动] 运行GuessWhat并生成联机公网链接.bat # 房主一键公网联机启动器
 └── [好友免安装版] 点我开始游戏.bat             # 发给好友的独立桌面小软件
 ```
 

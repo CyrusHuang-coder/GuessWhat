@@ -149,9 +149,9 @@ export function SurfaceLogo({ size = 'md', showText = false, className = '' }: P
       {showText && (
         <div className="flex flex-col justify-center">
           <div className="flex items-baseline gap-1.5 leading-none">
-            <span className={`${titleSizeMap[size]} text-ink-text tracking-tight`}>浮出水面</span>
+            <span className={`${titleSizeMap[size]} text-ink-text tracking-tight font-black font-sans`}>GuessWhat</span>
             <span className="text-[10px] tracking-[0.2em] font-mono text-sage-600 font-semibold uppercase opacity-90">
-              SURFACE
+              ONLINE
             </span>
           </div>
           {size === 'lg' || size === 'xl' ? (
