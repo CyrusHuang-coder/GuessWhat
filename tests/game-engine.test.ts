@@ -1,0 +1,190 @@
+import { describe, it, expect, beforeEach } from 'vitest';
+import { MemoryRoomStore } from '../lib/store/memoryStore';
+
+describe('游戏状态机与规则核心流程测试', () => {
+  let store: MemoryRoomStore;
+
+  beforeEach(() => {
+    store = new MemoryRoomStore();
+  });
+
+  it('完整走完：创建房间 -> 加入 -> 猜词人设置 -> 出题人选词 -> 问答 -> 猜中结算', async () => {
+    // 1. 房主创房 (出题人)
+    const { room, playerToken: hostToken } = await store.createRoom('出题房主');
+    expect(room.code).toHaveLength(6);
+    expect(room.status).toBe('waiting_player');
+
+    // 2. 玩家加入 (猜词人)
+    const { room: joinedRoom, playerToken: guestToken } = await store.joinRoom(
+      room.code,
+      '猜词玩家'
+    );
+    expect(joinedRoom.status).toBe('in_game');
+    expect(joinedRoom.guest_nickname).toBe('猜词玩家');
+
+    // 3. 猜词人提交游戏设置 (动物, 普通难度, 普通模式)
+    const session = await store.saveSettings(room.code, guestToken, {
+      theme: '动物',
+      difficulty: 'medium',
+      mode: 'normal',
+    });
+    expect(session.status).toBe('word_selection');
+    expect(session.theme).toBe('动物');
+    expect(session.ai_quota_total).toBe(2); // 普通难度 2 次
+
+    // 4. 出题人设置秘密答案
+    const playingSession = await store.setWord(room.code, hostToken, {
+      word: '海豚',
+      category: '动物',
+      note: '高智商海洋哺乳动物',
+    });
+    expect(playingSession.status).toBe('playing');
+    expect(playingSession.secret_word).toBe('海豚');
+
+    // 5. 猜词人提问
+    const q1 = await store.submitQuestion(room.code, guestToken, '它是生活在水里的吗？');
+    expect(q1.question_number).toBe(1);
+    expect(q1.status).toBe('pending');
+
+    // 6. 出题人正式回答【是】
+    const answeredQ1 = await store.answerQuestion(room.code, hostToken, q1.id, 'yes');
+    expect(answeredQ1.status).toBe('answered');
+    expect(answeredQ1.answer).toBe('yes');
+
+    // 7. 猜词人再次提问
+    const q2 = await store.submitQuestion(room.code, guestToken, '它是鱼类吗？');
+    const answeredQ2 = await store.answerQuestion(room.code, hostToken, q2.id, 'no');
+    expect(answeredQ2.answer).toBe('no');
+
+    // 8. 猜词人正式猜错
+    const g1 = await store.submitGuess(room.code, guestToken, '蓝鲸');
+    const adjG1 = await store.adjudicateGuess(room.code, hostToken, g1.id, 'incorrect');
+    expect(adjG1.guess.status).toBe('incorrect');
+    expect(adjG1.session.wrong_guesses_count).toBe(1);
+    expect(adjG1.session.status).toBe('playing'); // 游戏继续，未结算
+
+    // 9. 猜词人猜中
+    const g2 = await store.submitGuess(room.code, guestToken, '海豚');
+    const adjG2 = await store.adjudicateGuess(room.code, hostToken, g2.id, 'correct');
+    expect(adjG2.guess.status).toBe('correct');
+    expect(adjG2.session.status).toBe('settled');
+    expect(adjG2.session.result).toBe('guessed');
+  });
+
+  it('挑战模式：提问额度耗尽后禁止提问，但仍允许发起正式猜词', async () => {
+    const { room, playerToken: hostToken } = await store.createRoom('出题人');
+    const { playerToken: guestToken } = await store.joinRoom(room.code, '挑战者');
+
+    // 设置挑战模式，上限为 2 次
+    await store.saveSettings(room.code, guestToken, {
+      theme: '水果',
+      difficulty: 'hard',
+      mode: 'challenge',
+      maxQuestions: 2,
+    });
+
+    await store.setWord(room.code, hostToken, { word: '红毛丹' });
+
+    // 第 1 问
+    const q1 = await store.submitQuestion(room.code, guestToken, '它是红色的吗？');
+    await store.answerQuestion(room.code, hostToken, q1.id, 'yes');
+
+    // 第 2 问 (已达上限 2 次)
+    const q2 = await store.submitQuestion(room.code, guestToken, '它长毛吗？');
+    await store.answerQuestion(room.code, hostToken, q2.id, 'yes');
+
+    // 尝试第 3 问 -> 应该抛出额度耗尽异常
+    await expect(
+      store.submitQuestion(room.code, guestToken, '它很贵吗？')
+    ).rejects.toThrow('挑战模式有效提问额度已耗尽');
+
+    // 验证：额度耗尽后依然允许发起正式猜词！
+    const guess = await store.submitGuess(room.code, guestToken, '红毛丹');
+    expect(guess.status).toBe('pending');
+    expect(guess.guess_text).toBe('红毛丹');
+
+    const result = await store.adjudicateGuess(room.code, hostToken, guess.id, 'correct');
+    expect(result.session.status).toBe('settled');
+    expect(result.session.result).toBe('guessed');
+  });
+
+  it('问题澄清生命周期测试：澄清不扣次数，仅限1次，修改后正式回答计入1次', async () => {
+    const { room, playerToken: hostToken } = await store.createRoom('出题人');
+    const { playerToken: guestToken } = await store.joinRoom(room.code, '猜词人');
+
+    await store.saveSettings(room.code, guestToken, {
+      theme: '食物',
+      difficulty: 'medium',
+      mode: 'challenge',
+      maxQuestions: 5,
+    });
+    await store.setWord(room.code, hostToken, { word: '螺蛳粉' });
+
+    // 猜词人提交模糊问题
+    const q = await store.submitQuestion(room.code, guestToken, '它好吃吗？');
+
+    // 出题人请求澄清
+    const clarifiedQ = await store.clarifyQuestion(
+      room.code,
+      hostToken,
+      q.id,
+      '缺少客观判断标准，口味因人而异'
+    );
+    expect(clarifiedQ.status).toBe('clarification_requested');
+    expect(clarifiedQ.clarification_count).toBe(1);
+
+    // 检查此时已完成问答数依然为 0
+    let state = await store.getRoomState(room.code, guestToken);
+    expect(state?.session?.completed_questions_count).toBe(0);
+
+    // 再次尝试对同一问题请求澄清应被拒绝（严格限制1次）
+    await expect(
+      store.clarifyQuestion(room.code, hostToken, q.id, '再次澄清')
+    ).rejects.toThrow();
+
+    // 猜词人修改问题
+    const revisedQ = await store.reviseQuestion(
+      room.code,
+      guestToken,
+      q.id,
+      '它闻起来有强烈的发酵酸臭味吗？'
+    );
+    expect(revisedQ.status).toBe('revised');
+    expect(revisedQ.revised_text).toBe('它闻起来有强烈的发酵酸臭味吗？');
+
+    // 出题人正式回答【是】
+    const finalAnswered = await store.answerQuestion(room.code, hostToken, q.id, 'yes');
+    expect(finalAnswered.status).toBe('answered');
+    expect(finalAnswered.answer).toBe('yes');
+
+    // 验证：最终正式回答后，已完成问答数只增加 1
+    state = await store.getRoomState(room.code, guestToken);
+    expect(state?.session?.completed_questions_count).toBe(1);
+  });
+
+  it('角色轮换与多轮对局测试', async () => {
+    const { room, playerToken: hostToken } = await store.createRoom('张三');
+    const { playerToken: guestToken } = await store.joinRoom(room.code, '李四');
+
+    // 第 1 局：张三出题，李四猜词
+    await store.saveSettings(room.code, guestToken, {
+      theme: '水果',
+      difficulty: 'easy',
+      mode: 'normal',
+    });
+    await store.setWord(room.code, hostToken, { word: '苹果' });
+    const g = await store.submitGuess(room.code, guestToken, '苹果');
+    await store.adjudicateGuess(room.code, hostToken, g.id, 'correct');
+
+    // 交换角色开启第 2 局
+    await store.nextRoundAction(room.code, hostToken, 'swap_roles');
+
+    const stateRound2 = await store.getRoomState(room.code, hostToken);
+    expect(stateRound2?.session?.round_number).toBe(2);
+    // 此时出题人变为李四 (guestToken)，猜词人变为张三 (hostToken)
+    expect(stateRound2?.session?.question_master_id).toBe(guestToken);
+    expect(stateRound2?.session?.guesser_id).toBe(hostToken);
+    expect(stateRound2?.myRole).toBe('guesser'); // 张三此时是猜词人
+  });
+});
+

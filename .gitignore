@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
+
+# Next.js build output
+.next/
+out/
+build/
+dist/
+
+# Local Environment Variables & Secrets (CRITICAL SECURITY)
+.env*.local
+.env
+!.env.example
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+*.pem
+
+# Editor & IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing & Coverage
+coverage/

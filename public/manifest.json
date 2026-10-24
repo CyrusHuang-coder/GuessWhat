@@ -1,0 +1,18 @@
+{
+  "name": "浮出水面 (Surface) - 双人实时猜词游戏",
+  "short_name": "浮出水面",
+  "description": "让藏在水下的秘密逐层浮现。双人实时在线是非推理猜词游戏，支持AI思维辅助与丰富全能词库",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F7F6F0",
+  "theme_color": "#5F7C69",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

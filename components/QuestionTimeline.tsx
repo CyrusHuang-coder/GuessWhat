@@ -1,0 +1,230 @@
+'use client';
+
+import { Guess, Question } from '@/lib/types/game';
+import { HelpCircle, Target, CheckCircle2, XCircle, AlertCircle, Clock, MessageSquare } from 'lucide-react';
+
+interface Props {
+  questions: Question[];
+  guesses: Guess[];
+  completedCount: number;
+  maxQuestions: number;
+  isChallengeMode: boolean;
+}
+
+export function QuestionTimeline({
+  questions,
+  guesses,
+  completedCount,
+  maxQuestions,
+  isChallengeMode,
+}: Props) {
+  type TimelineItem =
+    | { type: 'question'; data: Question; time: number }
+    | { type: 'guess'; data: Guess; time: number };
+
+  const items: TimelineItem[] = [
+    ...questions.map((q) => ({
+      type: 'question' as const,
+      data: q,
+      time: new Date(q.created_at).getTime(),
+    })),
+    ...guesses.map((g) => ({
+      type: 'guess' as const,
+      data: g,
+      time: new Date(g.created_at).getTime(),
+    })),
+  ].sort((a, b) => a.time - b.time);
+
+  return (
+    <div className="space-y-4">
+      {/* 顶部计数与信息进度条 */}
+      <div className="flex flex-wrap items-center justify-between text-xs bg-warm-subtle/80 p-3 rounded-game-sm border border-warm-border">
+        <div className="flex items-center gap-4 text-ink-text">
+          <div>
+            已完成有效问答: <strong className="font-bold text-ink-text text-sm">{completedCount}</strong>
+            {isChallengeMode ? (
+              <span className="text-ink-muted"> / {maxQuestions} 次</span>
+            ) : (
+              <span className="text-ink-muted"> 次 (不限次)</span>
+            )}
+          </div>
+          <span className="text-warm-border">|</span>
+          <div>
+            正式猜错: <strong className="font-bold text-status-err text-sm">{guesses.filter(g => g.status === 'incorrect').length}</strong> 次
+          </div>
+        </div>
+
+        {isChallengeMode && (
+          <div className="font-semibold text-terracotta-700 bg-terracotta-100 px-2.5 py-0.5 rounded-full text-xs">
+            剩余提问:{' '}
+            <strong className="font-black text-sm">
+              {Math.max(0, maxQuestions - completedCount)}
+            </strong>{' '}
+            次
+          </div>
+        )}
+      </div>
+
+      {/* 问答与正式猜词记录流 */}
+      {items.length === 0 ? (
+        <div className="py-16 text-center text-ink-subtle bg-white border border-dashed border-warm-border rounded-game shadow-2xs">
+          <HelpCircle className="w-9 h-9 mx-auto mb-2 opacity-40 text-sage-500" />
+          <p className="text-sm font-semibold text-ink-muted">本局暂无问答记录</p>
+          <p className="text-xs text-ink-subtle mt-1">
+            猜词人可从下方输入第一个可以用「是」「不是」「不确定」回答的问题
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {items.map((item) => {
+            if (item.type === 'question') {
+              const q = item.data;
+              return (
+                <div
+                  key={`q-${q.id}`}
+                  className={`p-4 rounded-game-sm border transition ${
+                    q.status === 'pending' || q.status === 'revised'
+                      ? 'bg-warm-bg border-sage-300'
+                      : q.status === 'clarification_requested'
+                      ? 'bg-status-warnBg border-status-warnBorder'
+                      : 'bg-white border-warm-border shadow-2xs'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-2.5">
+                      <span className="shrink-0 w-6 h-6 rounded-full bg-warm-subtle text-ink-muted font-bold text-xs flex items-center justify-center border border-warm-border">
+                        #{q.question_number}
+                      </span>
+                      <div>
+                        {/* 修改前与修改后 */}
+                        {q.revised_text ? (
+                          <div className="space-y-1">
+                            <div className="text-xs text-ink-subtle line-through">
+                              原问题: {q.original_text}
+                            </div>
+                            <div className="text-sm font-bold text-ink-text flex items-center gap-2">
+                              <span>{q.revised_text}</span>
+                              <span className="text-[10px] bg-sage-100 text-sage-800 font-semibold px-1.5 py-0.2 rounded border border-sage-200">
+                                已按澄清修改
+                              </span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-sm font-bold text-ink-text">{q.original_text}</div>
+                        )}
+
+                        {/* 澄清提示 */}
+                        {q.status === 'clarification_requested' && (
+                          <div className="mt-2 text-xs bg-status-warnBg text-status-warn p-2.5 rounded-game-sm border border-status-warnBorder flex items-center gap-1.5">
+                            <AlertCircle className="w-4 h-4 shrink-0" />
+                            <span>
+                              出题人请求澄清：<strong>{q.clarification_reason}</strong>（待猜词人修改）
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 回答结果标签 (图标 + 明确文字) */}
+                    <div className="shrink-0">
+                      {q.status === 'answered' && (
+                        <div>
+                          {q.answer === 'yes' && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-status-okBg text-status-ok border border-status-okBorder shadow-2xs">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              是
+                            </span>
+                          )}
+                          {q.answer === 'no' && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-status-errBg text-status-err border border-status-errBorder shadow-2xs">
+                              <XCircle className="w-3.5 h-3.5" />
+                              不是
+                            </span>
+                          )}
+                          {q.answer === 'uncertain' && (
+                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-status-warnBg text-status-warn border border-status-warnBorder shadow-2xs">
+                              <HelpCircle className="w-3.5 h-3.5" />
+                              不确定
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {q.status === 'pending' && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-warm-subtle text-ink-muted border border-warm-border animate-pulse">
+                          <Clock className="w-3 h-3" />
+                          等待回答中
+                        </span>
+                      )}
+
+                      {q.status === 'revised' && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-sage-100 text-sage-700 border border-sage-200 animate-pulse">
+                          <Clock className="w-3 h-3" />
+                          已修改，待出题人回复
+                        </span>
+                      )}
+
+                      {q.status === 'clarification_requested' && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-status-warnBg text-status-warn border border-status-warnBorder">
+                          <MessageSquare className="w-3 h-3" />
+                          等待澄清修改
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            } else {
+              // 正式猜词卡片 (明确区别于普通问答)
+              const g = item.data;
+              return (
+                <div
+                  key={`g-${g.id}`}
+                  className={`p-3.5 rounded-game-sm border flex items-center justify-between transition ${
+                    g.status === 'correct'
+                      ? 'bg-status-okBg border-status-ok text-status-ok font-bold shadow-board'
+                      : g.status === 'incorrect'
+                      ? 'bg-status-errBg border-status-errBorder text-status-err'
+                      : 'bg-terracotta-50 border-terracotta-200 text-terracotta-700 animate-pulse'
+                  }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`p-1.5 rounded-game-sm ${
+                        g.status === 'correct'
+                          ? 'bg-status-ok text-white'
+                          : g.status === 'incorrect'
+                          ? 'bg-status-err text-white'
+                          : 'bg-terracotta-500 text-white'
+                      }`}
+                    >
+                      <Target className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold opacity-80">正式猜词：</span>
+                      <span className="text-sm font-black ml-1">“{g.guess_text}”</span>
+                    </div>
+                  </div>
+
+                  <div className="shrink-0 text-xs font-bold">
+                    {g.status === 'pending' && <span>等待出题人正式裁定...</span>}
+                    {g.status === 'incorrect' && (
+                      <span className="flex items-center gap-1">
+                        <XCircle className="w-4 h-4" /> 没猜中 (对局继续)
+                      </span>
+                    )}
+                    {g.status === 'correct' && (
+                      <span className="flex items-center gap-1">
+                        <CheckCircle2 className="w-4 h-4" /> 猜中了！
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            }
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
