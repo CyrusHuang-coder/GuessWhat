@@ -37,6 +37,7 @@ export function GuesserSidebar({
   >(null);
   const [stageHint, setStageHint] = useState<{ direction: string; hint: string } | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [evaluating, setEvaluating] = useState(false);
 
   if (!session) return null;
 
@@ -103,6 +104,25 @@ export function GuesserSidebar({
       });
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // 手动即刻发起当前思路偏航评估（不消耗主动额度）
+  const handleEvaluateNow = async () => {
+    if (evaluating) return;
+    setEvaluating(true);
+    try {
+      await fetch(`/api/rooms/${roomCode}/off-track/evaluate`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-player-token': playerToken,
+        },
+      });
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setEvaluating(false);
     }
   };
 
@@ -220,8 +240,21 @@ export function GuesserSidebar({
         </div>
 
         <p className="text-[11px] text-ink-muted leading-relaxed">
-          开启后，系统将在第 4、7、10... 次问答完成时由 AI 评估策略是否出现盲目固着。不消耗主动辅助额度。
+          开启后，系统将在第 4、7、10... 次问答完成时自动评估策略是否盲目固着；亦可随时手动点击即刻评估（不消耗额度）。
         </p>
+
+        {session.off_track_enabled && (
+          <button
+            type="button"
+            onClick={handleEvaluateNow}
+            disabled={evaluating || state.questions.filter((q) => q.status === 'answered').length === 0}
+            className="w-full py-2 px-2.5 bg-terracotta-50 hover:bg-terracotta-100 text-terracotta-700 text-xs font-bold rounded-game-sm transition border border-terracotta-200 flex items-center justify-center gap-1.5 disabled:opacity-50"
+            title="对当前已问问题进行逻辑策略评估"
+          >
+            <Compass className={`w-3.5 h-3.5 text-terracotta-600 ${evaluating ? 'animate-spin' : ''}`} />
+            <span>{evaluating ? '正在推演评估当前思路...' : '⚡ 立即评估当前提问思路'}</span>
+          </button>
+        )}
 
         {session.off_track_enabled && latestEvaluation && (
           <div

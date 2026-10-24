@@ -4,11 +4,14 @@ title 浮出水面 (Surface) —— 双人实时在线猜词
 echo ========================================================
 echo       正在以独立软件窗口打开「浮出水面 (Surface)」游戏...
 echo ========================================================
+echo 联机服务器: https://two-comics-try.loca.lt
+echo.
+echo 提示：如页面提示输入 Password 密码，填入: 35.200.44.224
 echo.
 
-:: 默认地址（房主启动服务后，该地址会自动更新为最新的公网联机网址）
-set URL=http://localhost:3000
+set URL=https://two-comics-try.loca.lt
 
+:: 优先使用系统内置的 Edge 独立应用模式启动（无地址栏、纯净桌游窗口）
 if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (
     start "" "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" --app="%URL%" --window-size=1120,850
 ) else if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" (

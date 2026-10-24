@@ -339,6 +339,57 @@ ${qaHistory}
 }
 
 /**
+ * 启发式离线规则偏航评估（即便无 AI 或网络波动，依然能精准侦测提问策略）
+ */
+function heuristicOffTrackEvaluation(questions: Question[]): { status: OffTrackStatus; rationale: string } {
+  const answered = questions.filter((q) => q.status === 'answered');
+  if (answered.length < 2) {
+    return {
+      status: 'insufficient_info',
+      rationale: '当前已完成的问答较少，暂未形成明确的二分收窄轨迹，请继续提问。',
+    };
+  }
+
+  // 1. 检查最近是否有连续 3 次以上的否定 ("不是")
+  if (answered.length >= 3) {
+    const recent3 = answered.slice(-3);
+    const allNo = recent3.every((q) => q.answer === 'no');
+    if (allNo) {
+      return {
+        status: 'possible_off_track',
+        rationale:
+          '提示：最近连续 3 题均得到否定回答，当前探索的细分属性可能陷入了死胡同。建议果断跳出，改从宏观大类（如：出现场景、功能用途、材质构成）重新划定范围。',
+      };
+    }
+  }
+
+  // 2. 检查多轮出现「不确定」
+  const uncertainCount = answered.filter((q) => q.answer === 'uncertain').length;
+  if (uncertainCount >= 2) {
+    return {
+      status: 'possible_off_track',
+      rationale:
+        '提示：已有多次问题得到「不确定」回答，说明当前维度出题人较难明确判定。建议换成更加客观具体、容易界定的是非标准。',
+    };
+  }
+
+  // 3. 检查是否有首个有效确认
+  const hasYes = answered.some((q) => q.answer === 'yes');
+  if (hasYes) {
+    return {
+      status: 'effective',
+      rationale:
+        '策略良好：已成功锁定核心肯定线索，正在逐步收窄推导空间，建议围绕已确认的属性展开进一步二分。',
+    };
+  }
+
+  return {
+    status: 'effective',
+    rationale: '当前提问正在有效排除大类分支，逻辑推进正常，继续保持。',
+  };
+}
+
+/**
  * 8.3 思路偏航预警
  * 评估猜词策略：有效推进 / 可能偏航 / 信息不足
  */
@@ -348,10 +399,13 @@ export async function evaluateOffTrackWarning(params: {
   questions: Question[];
 }): Promise<{ status: OffTrackStatus; rationale: string }> {
   if (!isAIConfigured()) {
-    return {
-      status: 'insufficient_info',
-      rationale: 'AI 服务未配置，跳过自动偏航评估。',
-    };
+    if (params.questions.length === 0) {
+      return {
+        status: 'insufficient_info',
+        rationale: 'AI 服务未配置，跳过自动偏航评估。',
+      };
+    }
+    return heuristicOffTrackEvaluation(params.questions);
   }
 
   const qaHistory = formatPublicQAHistory(params.questions);
@@ -397,10 +451,8 @@ ${qaHistory}
       rationale: String(parsed.rationale || '保持当前探索思路即可。'),
     };
   } catch (err) {
-    return {
-      status: 'insufficient_info',
-      rationale: '偏航评估服务暂时不可用，不影响游戏正常进行。',
-    };
+    // 大模型失败时，优雅降级为启发式规则评估，确保预警功能永远可用！
+    return heuristicOffTrackEvaluation(params.questions);
   }
 }
 
