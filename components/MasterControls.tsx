@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AnswerType, GameStateDTO } from '@/lib/types/game';
-import { CheckCircle2, XCircle, HelpCircle, MessageSquare, X } from 'lucide-react';
+import { CheckCircle2, XCircle, HelpCircle, MessageSquare, X, Sparkles, Loader2 } from 'lucide-react';
 
 interface Props {
   state: GameStateDTO;
@@ -20,12 +20,26 @@ export function MasterControls({ state, roomCode, playerToken }: Props) {
   const [customClarify, setCustomClarify] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  if (session?.status !== 'playing') return null;
+  // 出题人 AI 知识百科查证状态
+  const [checkingFact, setCheckingFact] = useState(false);
+  const [factCheckResult, setFactCheckResult] = useState<{
+    suggestedAnswer: AnswerType;
+    explanation: string;
+  } | null>(null);
+  const [factError, setFactError] = useState<string | null>(null);
 
   // 待回答的问题
   const pendingQuestion = questions.find(
     (q) => q.status === 'pending' || q.status === 'revised'
   );
+
+  // 当待回答题目变化时，重置上一题的事实查证结果
+  useEffect(() => {
+    setFactCheckResult(null);
+    setFactError(null);
+  }, [pendingQuestion?.id]);
+
+  if (session?.status !== 'playing') return null;
 
   // 待裁定的猜词
   const pendingGuess = guesses.find((g) => g.status === 'pending');
@@ -109,6 +123,34 @@ export function MasterControls({ state, roomCode, playerToken }: Props) {
     }
   };
 
+  // 向 AI 请求当前题目事实查证（知识型问题百科顾问）
+  const handleFactCheck = async () => {
+    if (!pendingQuestion || checkingFact) return;
+    setCheckingFact(true);
+    setFactError(null);
+
+    try {
+      const qText = pendingQuestion.revised_text || pendingQuestion.original_text;
+      const res = await fetch(`/api/rooms/${roomCode}/ai-fact-check`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-player-token': playerToken,
+        },
+        body: JSON.stringify({ questionText: qText }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        throw new Error(data.message || data.error);
+      }
+      setFactCheckResult(data.data);
+    } catch (err: any) {
+      setFactError(err.message || '查询事实失败');
+    } finally {
+      setCheckingFact(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
       {error && (
@@ -171,6 +213,82 @@ export function MasterControls({ state, roomCode, playerToken }: Props) {
           <div className="text-base font-bold text-ink-text bg-warm-bg/70 p-3.5 rounded-game-sm border border-warm-border">
             {pendingQuestion.revised_text || pendingQuestion.original_text}
           </div>
+
+          {/* 出题人 AI 知识百科查证与顾问辅助 */}
+          {factError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-game-sm text-xs text-red-700 flex items-start justify-between gap-2">
+              <div className="leading-relaxed whitespace-pre-wrap">{factError}</div>
+              <button
+                type="button"
+                onClick={() => setFactError(null)}
+                className="text-red-500 hover:text-red-800 shrink-0 p-0.5"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {factCheckResult ? (
+            <div className="p-3.5 bg-gradient-to-r from-sage-50 to-emerald-50 border border-sage-300 rounded-game-sm space-y-2.5 animate-in fade-in duration-150">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-sage-900">
+                  <Sparkles className="w-4 h-4 text-sage-600" />
+                  <span>AI 知识顾问查证建议：</span>
+                  <span className={`px-2 py-0.5 rounded text-xs font-black text-white ${
+                    factCheckResult.suggestedAnswer === 'yes' ? 'bg-status-ok' :
+                    factCheckResult.suggestedAnswer === 'no' ? 'bg-status-err' : 'bg-status-warn'
+                  }`}>
+                    建议回答【{factCheckResult.suggestedAnswer === 'yes' ? '是' : factCheckResult.suggestedAnswer === 'no' ? '不是' : '不确定'}】
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setFactCheckResult(null)}
+                  className="text-ink-subtle hover:text-ink-text p-1 text-xs"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="text-xs text-ink-text bg-white/80 p-2.5 rounded border border-sage-200/60 leading-relaxed">
+                <span className="font-semibold text-sage-800">事实解析：</span>
+                {factCheckResult.explanation}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => handleAnswer(factCheckResult.suggestedAnswer)}
+                  disabled={answering}
+                  className="px-3 py-1.5 bg-sage-600 hover:bg-sage-700 text-white font-bold text-xs rounded shadow-xs transition flex items-center gap-1"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>一键采纳此回答并提交</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={handleFactCheck}
+                disabled={checkingFact || answering}
+                className="text-xs text-sage-700 hover:text-sage-900 font-medium py-1.5 px-2.5 bg-sage-50 hover:bg-sage-100/80 border border-sage-200 rounded-game-sm transition flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {checkingFact ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-sage-600" />
+                    <span>正在查证关于秘密词条的百科事实...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-3.5 h-3.5 text-sage-600" />
+                    <span>对该知识点拿不准？让 AI 查证此题事实（不泄密）</span>
+                  </>
+                )}
+              </button>
+            </div>
+          )}
 
           {/* 3个核心正式回答按钮 + 1个独立澄清操作 */}
           <div className="space-y-2">

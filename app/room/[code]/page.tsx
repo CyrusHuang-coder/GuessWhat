@@ -328,8 +328,8 @@ export default function RoomPage({ params }: PageProps) {
               )}
             </div>
 
-            {/* 辅助侧栏 (约 1/3 宽度，桌面端并排展示，手机端隐藏并改用抽屉) */}
-            <div className="hidden lg:block lg:col-span-1">
+            {/* 辅助侧栏 (桌面端 1/3 独立右栏，手机端位于主区下方可平滑滑动查看) */}
+            <div className="mt-6 lg:mt-0 lg:col-span-1">
               {myRole === 'guesser' && (
                 <GuesserSidebar
                   state={gameState}
@@ -340,7 +340,11 @@ export default function RoomPage({ params }: PageProps) {
                 />
               )}
               {myRole === 'question_master' && (
-                <MasterSidebar state={gameState} />
+                <MasterSidebar
+                  state={gameState}
+                  roomCode={code}
+                  playerToken={playerToken}
+                />
               )}
             </div>
           </div>

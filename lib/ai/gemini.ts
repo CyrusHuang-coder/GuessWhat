@@ -514,3 +514,59 @@ export async function generateWordCandidates(params: {
   }
 }
 
+export interface AIFactCheckResult {
+  suggestedAnswer: 'yes' | 'no' | 'uncertain';
+  explanation: string;
+}
+
+/**
+ * 8.5 出题人事实查证助手：帮助出题人核实针对秘密词条的知识型问题事实
+ */
+export async function verifyQuestionFact(params: {
+  secretWord: string;
+  theme: string;
+  questionText: string;
+}): Promise<AIFactCheckResult> {
+  if (!isAIConfigured()) {
+    throw new Error('MISSING_API_KEY: 未配置大模型密钥，无法发起实时百科查证');
+  }
+
+  const systemPrompt = `你是一款双人实时猜词游戏中出题人的专属私人知识百科顾问。
+出题人设定的秘密答案词条是【${params.secretWord}】（归属主题：${params.theme}）。
+猜词人向出题人提出了一个是非问题。出题人可能对该知识点不够笃定。
+请基于客观真实世界的百科知识，帮助出题人准确裁决该问题应当回答「是」、「不是」还是「不确定」，并给出简明的一两句话客观事实依据。`;
+
+  const userPrompt = `【秘密词条】${params.secretWord}
+【猜词人提出的问题】"${params.questionText}"
+
+【裁定要求】
+1. 如果根据科学常识或客观事实该命题完全成立，建议回答 "yes"；
+2. 如果根据客观事实该命题不成立或与该事物特征矛盾，建议回答 "no"；
+3. 如果该问题存在广泛争议、属于主观审美感受、或因人而异没有公认客观标准，建议回答 "uncertain"；
+4. 解释 (explanation) 控制在 20~80 字以内，清晰客观，直接说明原因。
+
+请严格返回如下 JSON 格式：
+{
+  "suggestedAnswer": "yes" | "no" | "uncertain",
+  "explanation": "简要事实依据（例如：水熊虫属于缓步动物门，具有极强的耐寒抗辐射休眠能力，确实能在接近绝对零度的极端环境中存活，因此应回答【是】）"
+}`;
+
+  const jsonStr = await callLLM(systemPrompt, userPrompt, 0.2);
+
+  try {
+    const parsed = JSON.parse(jsonStr) as AIFactCheckResult;
+    const validAnswers = ['yes', 'no', 'uncertain'];
+    const suggestedAnswer = validAnswers.includes(parsed.suggestedAnswer)
+      ? (parsed.suggestedAnswer as 'yes' | 'no' | 'uncertain')
+      : 'uncertain';
+
+    return {
+      suggestedAnswer,
+      explanation: String(parsed.explanation || '未能获取确切依据，建议根据常识作答。').trim(),
+    };
+  } catch (err: any) {
+    throw new Error(`解析 AI 百科查证结果失败: ${err.message}`);
+  }
+}
+
+
