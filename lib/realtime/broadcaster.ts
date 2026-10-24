@@ -43,15 +43,14 @@ class RealtimeBroadcaster {
   }
 }
 
-// 单例保存在 globalThis 防止 Next.js 开发模式热重载时丢失订阅者映射
+// 单例保存在 globalThis，确保所有 API 路由与生产运行共享同一套订阅通道
 const globalForBroadcaster = globalThis as unknown as {
   realtimeBroadcaster?: RealtimeBroadcaster;
 };
 
-export const realtimeBroadcaster =
-  globalForBroadcaster.realtimeBroadcaster ?? new RealtimeBroadcaster();
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForBroadcaster.realtimeBroadcaster = realtimeBroadcaster;
+if (!globalForBroadcaster.realtimeBroadcaster) {
+  globalForBroadcaster.realtimeBroadcaster = new RealtimeBroadcaster();
 }
+
+export const realtimeBroadcaster = globalForBroadcaster.realtimeBroadcaster;
 

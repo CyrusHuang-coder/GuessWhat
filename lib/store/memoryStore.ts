@@ -853,14 +853,13 @@ export class MemoryRoomStore implements IRoomStore {
   }
 }
 
-// 单例模式，避免 Next.js API 路由冷热更新重置内存
+// 单例模式挂载至 globalThis，确保开发热更新与生产单例均不丢失内存数据
 const globalForStore = globalThis as unknown as {
   memoryRoomStore?: MemoryRoomStore;
 };
 
-export const memoryRoomStore =
-  globalForStore.memoryRoomStore ?? new MemoryRoomStore();
-
-if (process.env.NODE_ENV !== 'production') {
-  globalForStore.memoryRoomStore = memoryRoomStore;
+if (!globalForStore.memoryRoomStore) {
+  globalForStore.memoryRoomStore = new MemoryRoomStore();
 }
+
+export const memoryRoomStore = globalForStore.memoryRoomStore;
