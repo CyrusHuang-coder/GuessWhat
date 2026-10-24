@@ -95,28 +95,39 @@ export function WordSelectionModal({ state, roomCode, playerToken }: Props) {
     setSubmitting(true);
     setError(null);
 
-    try {
-      const res = await fetch(`/api/rooms/${roomCode}/word`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-player-token': playerToken,
-        },
-        body: JSON.stringify({
-          word: finalWord,
-          category: session?.theme,
-          note: finalNote,
-          isCustom,
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(`/api/rooms/${roomCode}/word`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-player-token': playerToken,
+          },
+          body: JSON.stringify({
+            word: finalWord,
+            category: session?.theme,
+            note: finalNote,
+            isCustom,
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setSubmitting(false);
+          return;
+        }
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 400));
+          continue;
+        }
         throw new Error(data.error || '设定秘密答案失败');
+      } catch (err: any) {
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 400));
+          continue;
+        }
+        setError(err.message);
+        setSubmitting(false);
       }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
     }
   };
 

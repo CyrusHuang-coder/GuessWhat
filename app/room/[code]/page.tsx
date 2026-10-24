@@ -37,8 +37,8 @@ export default function RoomPage({ params }: PageProps) {
   // 跨组件填入推荐问题
   const [presetQuestion, setPresetQuestion] = useState<string>('');
 
-  // 获取房间状态
-  const fetchState = useCallback(async (token?: string) => {
+  // 获取房间状态 (内置轻量重试以抵御 Serverless 路由漂移)
+  const fetchState = useCallback(async (token?: string, retries = 2): Promise<GameStateDTO | null> => {
     try {
       const activeToken = token ?? playerToken;
       const res = await fetch(`/api/rooms/${code}`, {
@@ -49,11 +49,20 @@ export default function RoomPage({ params }: PageProps) {
       });
       const data = await res.json();
       if (!data.success) {
+        if (retries > 0) {
+          await new Promise((r) => setTimeout(r, 400));
+          return fetchState(token, retries - 1);
+        }
         throw new Error(data.error || '获取房间数据失败');
       }
       setGameState(data.data);
+      setError(null);
       return data.data as GameStateDTO;
     } catch (err: any) {
+      if (retries > 0) {
+        await new Promise((r) => setTimeout(r, 400));
+        return fetchState(token, retries - 1);
+      }
       setError(err.message);
       return null;
     }
@@ -94,6 +103,29 @@ export default function RoomPage({ params }: PageProps) {
     const interval = setInterval(sendHeartbeat, 5000);
     return () => clearInterval(interval);
   }, [code, playerToken]);
+
+  // 当移动端切屏返回或锁屏唤醒时，立即同步状态与心跳
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && code) {
+        if (playerToken) {
+          fetch(`/api/rooms/${code}/heartbeat`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-player-token': playerToken,
+            },
+          }).catch(() => {});
+        }
+        fetchState();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [code, playerToken, fetchState]);
 
   // 实时 SSE 订阅 + 3s 温和轮询兜底
   useEffect(() => {

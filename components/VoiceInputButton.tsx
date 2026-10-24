@@ -57,21 +57,32 @@ export function VoiceInputButton({
     try {
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
-      recognition.interimResults = true;
+      // 禁用中间过度片断（interimResults），避免频繁触发导致文本重复拼接成“它 它是 它是男...”
+      recognition.interimResults = false;
       recognition.lang = 'zh-CN'; // 默认中文识别
+
+      let sessionTranscript = '';
+      let hasEmitted = false;
 
       recognition.onstart = () => {
         setIsListening(true);
         setErrorMessage(null);
+        sessionTranscript = '';
+        hasEmitted = false;
       };
 
       recognition.onresult = (event: any) => {
-        let transcript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
+        let finalTranscript = '';
+        for (let i = 0; i < event.results.length; i++) {
+          const item = event.results[i];
+          if (item && item[0] && item[0].transcript) {
+            finalTranscript += item[0].transcript;
+          }
         }
-        if (transcript.trim()) {
-          onTranscriptRef.current(transcript.trim());
+
+        const cleaned = finalTranscript.trim();
+        if (cleaned) {
+          sessionTranscript = cleaned;
         }
       };
 
@@ -98,6 +109,11 @@ export function VoiceInputButton({
 
       recognition.onend = () => {
         setIsListening(false);
+        if (sessionTranscript && !hasEmitted) {
+          hasEmitted = true;
+          onTranscriptRef.current(sessionTranscript);
+          sessionTranscript = '';
+        }
       };
 
       recognitionRef.current = recognition;

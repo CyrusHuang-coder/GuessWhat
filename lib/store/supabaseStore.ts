@@ -202,7 +202,7 @@ export class SupabaseRoomStore implements IRoomStore {
     }
 
     const now = Date.now();
-    const isOnline = (iso?: string | null) => (iso ? now - new Date(iso).getTime() < 15000 : false);
+    const isOnline = (iso?: string | null) => (iso ? now - new Date(iso).getTime() < 40000 : false);
     const opponentOnline = isHost ? isOnline(room.guest_last_active) : isOnline(room.host_last_active);
 
     // 防剧透脱敏：只要不是出题人且未结算，绝对不返回秘密答案及注解

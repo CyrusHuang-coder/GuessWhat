@@ -183,7 +183,7 @@ export class MemoryRoomStore implements IRoomStore {
     const now = Date.now();
     const isOnline = (isoString?: string | null) => {
       if (!isoString) return false;
-      return now - new Date(isoString).getTime() < 15000;
+      return now - new Date(isoString).getTime() < 40000;
     };
 
     const opponentOnline = isHost

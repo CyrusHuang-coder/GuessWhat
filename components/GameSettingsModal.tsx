@@ -38,28 +38,39 @@ export function GameSettingsModal({ state, roomCode, playerToken }: Props) {
     setSubmitting(true);
     setError(null);
 
-    try {
-      const res = await fetch(`/api/rooms/${roomCode}/settings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-player-token': playerToken,
-        },
-        body: JSON.stringify({
-          theme: finalTheme,
-          difficulty,
-          mode,
-          maxQuestions: Number(maxQuestions),
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const res = await fetch(`/api/rooms/${roomCode}/settings`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-player-token': playerToken,
+          },
+          body: JSON.stringify({
+            theme: finalTheme,
+            difficulty,
+            mode,
+            maxQuestions: Number(maxQuestions),
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          setSubmitting(false);
+          return;
+        }
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 400));
+          continue;
+        }
         throw new Error(data.error || '保存设置失败');
+      } catch (err: any) {
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 400));
+          continue;
+        }
+        setError(err.message);
+        setSubmitting(false);
       }
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setSubmitting(false);
     }
   };
 
