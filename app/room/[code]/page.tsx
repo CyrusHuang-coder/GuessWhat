@@ -12,7 +12,6 @@ import { MasterControls } from '@/components/MasterControls';
 import { GuesserSidebar } from '@/components/GuesserSidebar';
 import { MasterSidebar } from '@/components/MasterSidebar';
 import { SettlementModal } from '@/components/SettlementModal';
-import { VoiceCallBar } from '@/components/VoiceCallBar';
 import { RoomChatDrawer } from '@/components/RoomChatDrawer';
 import { soundEffects } from '@/lib/audio/sound';
 import { Copy, Check, Users, Loader2, UserPlus, ArrowRight } from 'lucide-react';
@@ -520,16 +519,6 @@ export default function RoomPage({ params }: PageProps) {
 
       {/* 主工作区 */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 flex flex-col justify-between space-y-4">
-        {/* 双人实时语音连麦栏 */}
-        {room.guest_player_id && (
-          <VoiceCallBar
-            roomCode={code}
-            playerToken={playerToken}
-            opponentOnline={gameState.opponentOnline}
-            hasGuest={Boolean(room.guest_player_id)}
-          />
-        )}
-
         {/* 阶段 1: 等待第二位玩家加入 */}
         {room.status === 'waiting_player' && (
           <div className="my-auto py-12 text-center max-w-md mx-auto bg-white p-8 rounded-game border border-warm-border shadow-board space-y-4">
@@ -654,8 +643,8 @@ export default function RoomPage({ params }: PageProps) {
         <SettlementModal state={gameState} roomCode={code} playerToken={playerToken} />
       )}
 
-      {/* 浮动联机聊天室 */}
-      {room.status === 'in_game' && (
+      {/* 浮动联机聊天室与嵌入式语音通话 */}
+      {Boolean(room.guest_player_id) && (
         <RoomChatDrawer
           roomCode={code}
           playerToken={playerToken}
@@ -665,6 +654,13 @@ export default function RoomPage({ params }: PageProps) {
               ? room.host_nickname
               : room.guest_nickname || '猜词伙伴'
           }
+          opponentNickname={
+            myRole === 'question_master'
+              ? room.guest_nickname || '猜词伙伴'
+              : room.host_nickname
+          }
+          opponentOnline={gameState.opponentOnline}
+          hasGuest={Boolean(room.guest_player_id)}
           onRefresh={() => fetchState()}
         />
       )}
