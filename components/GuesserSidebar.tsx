@@ -281,28 +281,16 @@ export function GuesserSidebar({
         )}
       </div>
 
-      {/* 3. 游戏机制提示与主动认输 */}
-      <div className="bg-warm-subtle rounded-game border border-warm-border p-3.5 space-y-3">
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-ink-muted">
-          <ShieldCheck className="w-4 h-4 text-sage-600" />
-          <span>猜词方小锦囊</span>
-        </div>
-        <ul className="text-[11px] text-ink-muted space-y-1.5 list-disc list-inside leading-relaxed">
-          <li>优先使用属性二分法（如：生物/非生物、室内/室外）。</li>
-          <li>出题人回答「不确定」不能当成否定，应换个明确角度。</li>
-          <li>觉得答案已成型时，随时点击“正式猜词”。</li>
-        </ul>
-
-        <div className="pt-2 border-t border-warm-border">
-          <button
-            type="button"
-            onClick={onSurrender}
-            className="w-full py-2 text-xs font-semibold text-status-err hover:bg-status-errBg rounded-game-sm transition flex items-center justify-center gap-1"
-          >
-            <Flag className="w-3.5 h-3.5" />
-            <span>遇到瓶颈？主动认输并揭晓</span>
-          </button>
-        </div>
+      {/* 3. 主动认输与局势终结 */}
+      <div className="bg-warm-subtle rounded-game border border-warm-border p-3 space-y-2">
+        <button
+          type="button"
+          onClick={onSurrender}
+          className="w-full py-2 text-xs font-semibold text-status-err hover:bg-status-errBg rounded-game-sm transition flex items-center justify-center gap-1.5"
+        >
+          <Flag className="w-3.5 h-3.5" />
+          <span>遇到瓶颈？主动认输并揭晓答案</span>
+        </button>
       </div>
     </aside>
   );

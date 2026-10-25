@@ -17,6 +17,7 @@ import {
 } from '../types/game';
 import { IRoomStore } from './interface';
 import { realtimeBroadcaster } from '../realtime/broadcaster';
+import { getRandomWordsByFilter } from '../data/wordBank';
 
 // 生成 6 位大写英数房间码（剔除易混淆的 0, O, 1, I）
 function generateRoomCode(): string {
@@ -100,6 +101,88 @@ export class MemoryRoomStore implements IRoomStore {
     this.matchHistoryByRoom.set(code, []);
 
     return { room, playerToken: hostToken };
+  }
+
+  async createBotRoom(
+    nickname: string,
+    options?: { theme?: string; difficulty?: Difficulty }
+  ): Promise<{ room: Room; playerToken: string }> {
+    const code = generateRoomCode();
+    const now = new Date().toISOString();
+    const hostToken = crypto.randomUUID();
+    const botPlayerId = 'bot_player';
+    const theme = options?.theme || '日常物品';
+    const difficulty = options?.difficulty || 'easy';
+
+    // 从词库随机抽取一个秘密词条作为 AI 的题
+    const candidateWords = getRandomWordsByFilter(theme, difficulty, 1);
+    const chosenWord = candidateWords[0] || {
+      id: 'bot_fallback',
+      name: '橡皮擦',
+      theme: '日常物品',
+      difficulty: 'easy' as Difficulty,
+      note: '修正字迹的工具',
+    };
+
+    const room: Room = {
+      id: crypto.randomUUID(),
+      code,
+      status: 'in_game',
+      host_player_id: hostToken,
+      host_nickname: nickname.trim() || '人类侦探',
+      guest_player_id: botPlayerId,
+      guest_nickname: 'AI 智能出题官 (DeepSeek)',
+      host_last_active: now,
+      guest_last_active: now,
+      created_at: now,
+      updated_at: now,
+    };
+
+    const sessionId = crypto.randomUUID();
+    const session: GameSession = {
+      id: sessionId,
+      room_id: room.id,
+      round_number: 1,
+      status: 'playing', // 直接进入游戏提问对决
+      question_master_id: botPlayerId, // AI 担任出题人
+      guesser_id: hostToken, // 玩家担任猜词人
+      theme,
+      difficulty,
+      mode: 'normal',
+      max_questions: 20,
+      secret_word: chosenWord.name,
+      secret_word_category: chosenWord.theme,
+      secret_word_note: chosenWord.note || null,
+      is_custom_word: false,
+      completed_questions_count: 0,
+      wrong_guesses_count: 0,
+      ai_quota_total: 2,
+      ai_quota_used: 0,
+      off_track_enabled: false,
+      result: null,
+      started_at: now,
+      ended_at: null,
+      created_at: now,
+    };
+
+    this.rooms.set(code, room);
+    this.sessions.set(sessionId, session);
+    this.currentSessionByRoom.set(code, sessionId);
+    this.questionsBySession.set(sessionId, []);
+    this.guessesBySession.set(sessionId, []);
+    this.hintsBySession.set(sessionId, []);
+    this.offTrackEvaluationsBySession.set(sessionId, []);
+    this.matchHistoryByRoom.set(code, []);
+
+    return { room, playerToken: hostToken };
+  }
+
+  async getSecretWordForBot(code: string): Promise<string | null> {
+    const uppercaseCode = code.toUpperCase();
+    const sessionId = this.currentSessionByRoom.get(uppercaseCode);
+    if (!sessionId) return null;
+    const session = this.sessions.get(sessionId);
+    return session?.secret_word || null;
   }
 
   async getRoomByCode(code: string): Promise<Room | null> {

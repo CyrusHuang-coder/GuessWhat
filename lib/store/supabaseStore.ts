@@ -18,6 +18,7 @@ import {
 } from '../types/game';
 import { IRoomStore } from './interface';
 import { realtimeBroadcaster } from '../realtime/broadcaster';
+import { getRandomWordsByFilter } from '../data/wordBank';
 
 function generateRoomCode(): string {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -93,6 +94,82 @@ export class SupabaseRoomStore implements IRoomStore {
     }
 
     return { room, playerToken: hostToken };
+  }
+
+  async createBotRoom(
+    nickname: string,
+    options?: { theme?: string; difficulty?: Difficulty }
+  ): Promise<{ room: Room; playerToken: string }> {
+    const supabase = this.ensureClient();
+    const code = generateRoomCode();
+    const hostToken = crypto.randomUUID();
+    const botPlayerId = 'bot_player';
+    const theme = options?.theme || '日常物品';
+    const difficulty = options?.difficulty || 'easy';
+
+    const candidateWords = getRandomWordsByFilter(theme, difficulty, 1);
+    const chosenWord = candidateWords[0] || {
+      id: 'bot_fallback',
+      name: '橡皮擦',
+      theme: '日常物品',
+      difficulty: 'easy' as Difficulty,
+      note: '修正字迹的工具',
+    };
+
+    const { data: room, error: roomErr } = await supabase
+      .from('rooms')
+      .insert({
+        code,
+        status: 'in_game',
+        host_player_id: hostToken,
+        host_nickname: nickname.trim() || '人类侦探',
+        guest_player_id: botPlayerId,
+        guest_nickname: 'AI 智能出题官 (DeepSeek)',
+      })
+      .select()
+      .single();
+
+    if (roomErr || !room) {
+      throw new Error(`创建人机房间失败: ${roomErr?.message}`);
+    }
+
+    const { error: sessionErr } = await supabase.from('sessions').insert({
+      room_id: room.id,
+      round_number: 1,
+      status: 'playing',
+      question_master_id: botPlayerId,
+      guesser_id: hostToken,
+      theme,
+      difficulty,
+      mode: 'normal',
+      max_questions: 20,
+      secret_word: chosenWord.name,
+      secret_word_category: chosenWord.theme,
+      secret_word_note: chosenWord.note || null,
+      ai_quota_total: 2,
+      ai_quota_used: 0,
+      off_track_enabled: false,
+    });
+
+    if (sessionErr) {
+      throw new Error(`初始化人机对局失败: ${sessionErr.message}`);
+    }
+
+    return { room, playerToken: hostToken };
+  }
+
+  async getSecretWordForBot(code: string): Promise<string | null> {
+    const supabase = this.ensureClient();
+    const room = await this.getRoomByCode(code);
+    if (!room) return null;
+    const { data } = await supabase
+      .from('sessions')
+      .select('secret_word')
+      .eq('room_id', room.id)
+      .order('round_number', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    return data?.secret_word || null;
   }
 
   async getRoomByCode(code: string): Promise<Room | null> {

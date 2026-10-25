@@ -28,7 +28,29 @@ export async function POST(
         );
       }
 
-      const hint = await store.requestHint(code, token, cost);
+      let hint = await store.requestHint(code, token, cost);
+
+      // 人机对战局：若出题人是 AI Bot，自动生成符合价值梯度的线索并答复
+      const state = await store.getRoomState(code, token);
+      if (state?.session && state.session.question_master_id === 'bot_player') {
+        const secretWord = await store.getSecretWordForBot(code);
+        if (secretWord) {
+          let hintText = `这是一条关于【${state.session.theme || '词条'}】的线索。`;
+          try {
+            const aiRes = await generateHintForMaster({
+              secretWord,
+              theme: state.session.theme || '日常物品',
+              cost,
+            });
+            hintText = aiRes.hintText;
+          } catch (e) {
+            hintText = `该词条属于【${state.session.secret_word_category || '常见类别'}】，请从更具体的使用场景与物理特征思考。`;
+          }
+          const result = await store.provideHint(code, 'bot_player', hint.id, hintText);
+          hint = result.hint;
+        }
+      }
+
       return NextResponse.json({ success: true, hint });
     }
 
@@ -96,7 +118,10 @@ export async function POST(
         previousQuestions: answeredQuestions,
       });
 
-      return NextResponse.json({ success: true, suggestion });
+      return NextResponse.json({
+        success: true,
+        suggestion: typeof suggestion === 'string' ? suggestion : suggestion.hintText,
+      });
     }
 
     return NextResponse.json({ success: false, error: '未知操作类型' }, { status: 400 });

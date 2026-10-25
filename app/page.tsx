@@ -20,6 +20,7 @@ import {
   RotateCcw,
   Check,
   Pin,
+  Bot,
 } from 'lucide-react';
 import { InstallPwaModal } from '@/components/InstallPwaModal';
 import {
@@ -61,6 +62,7 @@ export default function HomePage() {
   // 创建房间表单
   const [createNickname, setCreateNickname] = useState('');
   const [creating, setCreating] = useState(false);
+  const [creatingBot, setCreatingBot] = useState(false);
 
   // 加入房间表单
   const [joinCode, setJoinCode] = useState('');
@@ -111,6 +113,31 @@ export default function HomePage() {
     } catch (err: any) {
       setError(err.message || '创建房间失败');
       setCreating(false);
+    }
+  };
+
+  // 开启单人人机对战
+  const handleCreateBotRoom = async () => {
+    if (creatingBot) return;
+    setCreatingBot(true);
+    setError(null);
+
+    const finalNick = prefs.defaultNickname || createNickname.trim() || '单挑侦探';
+
+    try {
+      const res = await fetch('/api/rooms/bot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nickname: finalNick }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+
+      savePlayerToken(data.roomCode, data.playerToken, finalNick);
+      router.push(`/room/${data.roomCode}`);
+    } catch (err: any) {
+      setError(err.message || '开启人机对战失败');
+      setCreatingBot(false);
     }
   };
 
@@ -431,6 +458,36 @@ export default function HomePage() {
                   </button>
                 </form>
               </div>
+            </div>
+
+            {/* 单人人机对战入口 */}
+            <div className="bg-gradient-to-r from-sage-50/80 via-white to-amber-50/50 p-5 rounded-game border-2 border-sage-300 shadow-board max-w-2xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5 text-center sm:text-left">
+                <div className="w-10 h-10 rounded-game-sm bg-sage-600 text-white flex items-center justify-center shrink-0 shadow-2xs">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center justify-center sm:justify-start gap-2">
+                    <h3 className="font-black text-ink-text text-sm">单人人机练习局</h3>
+                    <span className="text-[10px] font-bold text-sage-800 bg-sage-100 border border-sage-300 px-1.5 py-0.2 rounded-full">
+                      AI 自动出题与裁定
+                    </span>
+                  </div>
+                  <p className="text-xs text-ink-muted mt-0.5">
+                    好友未在线？随时独自单练！AI 智脑担任出题官，智能裁决是非与猜词判定。
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCreateBotRoom}
+                disabled={creatingBot}
+                className="w-full sm:w-auto px-5 py-2.5 bg-sage-600 hover:bg-sage-700 active:bg-sage-800 disabled:opacity-50 text-white font-bold text-xs rounded-game-sm shadow-2xs transition flex items-center justify-center gap-1.5 shrink-0"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{creatingBot ? '正在开启人机局...' : '开启人机对战'}</span>
+              </button>
             </div>
 
             {/* 手机桌面 App 入口 */}

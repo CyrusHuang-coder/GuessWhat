@@ -21,6 +21,7 @@ export function RoomHeader({ state, playerToken, onRefresh }: Props) {
   const [copied, setCopied] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
   const [swappingRoles, setSwappingRoles] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(soundEffects.isEnabled());
   const [pinned, setPinned] = useState(() => isRoomPinned(state.room.code));
@@ -178,8 +179,9 @@ export function RoomHeader({ state, playerToken, onRefresh }: Props) {
           </div>
         </div>
 
-        {/* 右侧：玩家卡片与引擎标签 */}
-        <div className="flex flex-wrap items-center gap-2 md:gap-3">
+        {/* 右侧：玩家卡片与换行专属工具栏 */}
+        <div className="flex flex-col items-start md:items-end gap-2 shrink-0">
+          {/* 双方玩家对战卡片 */}
           <div className="flex items-center gap-1.5 bg-warm-bg border border-warm-border rounded-game-sm p-1 text-xs">
             {/* 房主 */}
             <div className="flex items-center gap-1.5 px-2 py-1 bg-white rounded shadow-2xs border border-warm-border">
@@ -237,36 +239,55 @@ export function RoomHeader({ state, playerToken, onRefresh }: Props) {
             </div>
           </div>
 
-          <button
-            onClick={() => setSoundEnabled(soundEffects.toggle())}
-            className={`p-1.5 rounded-game-sm border transition ${
-              soundEnabled
-                ? 'bg-warm-subtle hover:bg-warm-border text-sage-700 border-warm-border'
-                : 'bg-warm-bg text-ink-subtle border-warm-border'
-            }`}
-            title={soundEnabled ? '提示音已开启（点击静音）' : '提示音已关闭（点击开启）'}
-          >
-            {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
-          </button>
+          {/* 独立换行功能小按钮排：声音、手机端、规则、锦囊/指南 */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setSoundEnabled(soundEffects.toggle())}
+              className={`flex items-center gap-1 px-2 py-0.5 rounded-game-sm border text-[11px] font-medium transition ${
+                soundEnabled
+                  ? 'bg-warm-subtle hover:bg-warm-border text-sage-800 border-warm-border'
+                  : 'bg-warm-bg text-ink-subtle border-warm-border'
+              }`}
+              title={soundEnabled ? '提示音已开启（点击静音）' : '提示音已关闭（点击开启）'}
+            >
+              {soundEnabled ? <Volume2 className="w-3 h-3 text-sage-600" /> : <VolumeX className="w-3 h-3 text-ink-subtle" />}
+              <span>{soundEnabled ? '声音' : '静音'}</span>
+            </button>
 
-          <button
-            onClick={() => setShowInstallModal(true)}
-            className="p-1.5 rounded-game-sm bg-warm-subtle hover:bg-warm-border text-ink-muted hover:text-ink-text border border-warm-border transition"
-            title="存为手机桌面 App"
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-          </button>
+            <button
+              type="button"
+              onClick={() => setShowInstallModal(true)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-game-sm bg-warm-subtle hover:bg-warm-border text-ink-muted hover:text-ink-text border border-warm-border text-[11px] font-medium transition"
+              title="存为手机桌面 App"
+            >
+              <Smartphone className="w-3 h-3 text-sage-600" />
+              <span>手机端</span>
+            </button>
 
-          <button
-            onClick={() => setShowRulesModal(true)}
-            className="p-1.5 rounded-game-sm bg-warm-subtle hover:bg-warm-border text-ink-muted hover:text-ink-text border border-warm-border transition"
-            title="查看游戏规则说明"
-          >
-            <HelpCircle className="w-3.5 h-3.5" />
-          </button>
+            <button
+              type="button"
+              onClick={() => setShowRulesModal(true)}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-game-sm bg-warm-subtle hover:bg-warm-border text-ink-muted hover:text-ink-text border border-warm-border text-[11px] font-medium transition"
+              title="查看游戏规则说明"
+            >
+              <HelpCircle className="w-3 h-3 text-sage-600" />
+              <span>规则</span>
+            </button>
 
-          <div className="hidden sm:block">
-            <EngineBadge />
+            <button
+              type="button"
+              onClick={() => setShowGuideModal(true)}
+              className="flex items-center gap-1 px-2.5 py-0.5 rounded-game-sm bg-sage-50 hover:bg-sage-100 text-sage-800 border border-sage-300 text-[11px] font-bold transition shadow-2xs"
+              title={state.myRole === 'question_master' ? '出题与裁定操作指南' : '猜词方小锦囊'}
+            >
+              <ShieldCheck className="w-3 h-3 text-sage-600" />
+              <span>{state.myRole === 'question_master' ? '裁定指南' : '猜词锦囊'}</span>
+            </button>
+
+            <div className="hidden sm:inline-flex">
+              <EngineBadge />
+            </div>
           </div>
         </div>
       </div>
@@ -321,6 +342,97 @@ export function RoomHeader({ state, playerToken, onRefresh }: Props) {
               <button
                 type="button"
                 onClick={() => setShowRulesModal(false)}
+                className="w-full py-2 bg-sage-500 hover:bg-sage-600 text-white font-bold text-xs rounded-game-sm transition"
+              >
+                我知道了
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 锦囊秘籍 / 出题裁定指南弹窗 */}
+      {showGuideModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-game border border-warm-border max-w-sm w-full p-5 shadow-board relative animate-in fade-in zoom-in-95 duration-150 space-y-3">
+            <button
+              onClick={() => setShowGuideModal(false)}
+              className="absolute top-4 right-4 p-1 text-ink-muted hover:text-ink-text rounded hover:bg-warm-bg transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-game-sm bg-sage-100 text-sage-600 flex items-center justify-center">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <h3 className="font-bold text-ink-text text-sm">
+                {state.myRole === 'question_master' ? '出题与裁定操作指南' : '猜词方推理小锦囊'}
+              </h3>
+            </div>
+
+            <div className="space-y-2.5 text-xs text-ink-text pt-1 max-h-[60vh] overflow-y-auto">
+              {state.myRole === 'question_master' ? (
+                <>
+                  <div className="p-2.5 bg-warm-bg rounded-game-sm border border-warm-border">
+                    <div className="font-bold text-status-ok mb-0.5">【是】/【不是】客观确切</div>
+                    <p className="text-ink-muted leading-relaxed">
+                      当根据事实与词条属性能够确切判定时，请直接点击。如点错，可使用回答下方的撤回按钮修正。
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-warm-bg rounded-game-sm border border-warm-border">
+                    <div className="font-bold text-status-warn mb-0.5">【不确定】谨慎表达</div>
+                    <p className="text-ink-muted leading-relaxed">
+                      当涉及主观感受、没有定论或您不清楚答案时，点击「不确定」。它属于正式回答，计入问答次数。
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-warm-bg rounded-game-sm border border-warm-border">
+                    <div className="font-bold text-terracotta-700 mb-0.5">【请求澄清】消除歧义</div>
+                    <p className="text-ink-muted leading-relaxed">
+                      若问题存在严重歧义或缺失标准，可请求猜词人重写。每题限1次，澄清中不消耗提问额度。
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-warm-bg rounded-game-sm border border-warm-border">
+                    <div className="font-bold text-sage-800 mb-0.5">【AI 知识顾问】随时求证</div>
+                    <p className="text-ink-muted leading-relaxed">
+                      拿不准词条的冷门事实或分类？随时在侧边栏向 AI 提问求证，不消耗额度也不泄密。
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="p-2.5 bg-warm-bg rounded-game-sm border border-warm-border">
+                    <div className="font-bold text-sage-800 mb-0.5">属性二分法法则</div>
+                    <p className="text-ink-muted leading-relaxed">
+                      优先从大属性二分（生物/非生物、人造/自然、室内/室外），每次将可能性砍半，是最快推演路径。
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-warm-bg rounded-game-sm border border-warm-border">
+                    <div className="font-bold text-status-warn mb-0.5">不确定 ≠ 否定</div>
+                    <p className="text-ink-muted leading-relaxed">
+                      出题人回答「不确定」不能当作否定，通常说明定义模糊或范围交错，应换个更严密明确的角度。
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-warm-bg rounded-game-sm border border-warm-border">
+                    <div className="font-bold text-terracotta-700 mb-0.5">善用提示交易</div>
+                    <p className="text-ink-muted leading-relaxed">
+                      陷入僵局时，点击「申请提示」可用 1/3/5 次提问机会换取专属线索，直破思维盲区。
+                    </p>
+                  </div>
+                  <div className="p-2.5 bg-warm-bg rounded-game-sm border border-warm-border">
+                    <div className="font-bold text-sage-800 mb-0.5">正式猜词与揭晓</div>
+                    <p className="text-ink-muted leading-relaxed">
+                      当答案已锁定具体名称时，点击「正式猜词」；猜错不扣问答次数仅记录猜错数。
+                    </p>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setShowGuideModal(false)}
                 className="w-full py-2 bg-sage-500 hover:bg-sage-600 text-white font-bold text-xs rounded-game-sm transition"
               >
                 我知道了

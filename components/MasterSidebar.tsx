@@ -201,34 +201,7 @@ export function MasterSidebar({ state, roomCode, playerToken }: Props) {
         )}
       </div>
 
-      {/* 3. 出题人回答与裁定指南 */}
-      <div className="bg-white rounded-game border border-warm-border p-4 shadow-board space-y-3">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-ink-text pb-2 border-b border-warm-border">
-          <ShieldCheck className="w-4 h-4 text-sage-600" />
-          <span>出题与裁定操作指南</span>
-        </div>
-
-        <div className="space-y-2.5 text-xs text-ink-muted leading-relaxed">
-          <div className="flex items-start gap-2">
-            <span className="font-bold text-status-ok shrink-0">【是】/【不是】：</span>
-            <span>当您能根据事实确切判定时，请直接点击。</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="font-bold text-status-warn shrink-0">【不确定】：</span>
-            <span>当您不知道确切答案、或属于主观感受无法可靠断定时，请点击「不确定」。它属于正式回答，计入问答次数。</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="font-bold text-terracotta-600 shrink-0">【请求澄清】：</span>
-            <span>若问题存在重大歧义（缺少标准、一问多意），可请求猜词人重写。每题限 1 次，澄清中不消耗提问额度。</span>
-          </div>
-          <div className="flex items-start gap-2">
-            <span className="font-bold text-indigo-600 shrink-0">【正式猜词】：</span>
-            <span>收到猜词通知后，由您裁定是否完全命中。猜错会增加猜错计数，游戏继续。</span>
-          </div>
-        </div>
-      </div>
-
-      {/* 4. 对局状态小结 */}
+      {/* 3. 对局状态小结 */}
       <div className="bg-warm-subtle rounded-game border border-warm-border p-3.5 text-xs text-ink-muted space-y-1.5">
         <div className="font-bold text-ink-text mb-1">对局概览</div>
         <div>房间代码：<strong className="font-mono text-sage-700">{room.code}</strong></div>

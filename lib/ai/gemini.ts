@@ -594,8 +594,8 @@ export async function generateHintForMaster(params: {
   secretWord: string;
   theme: string;
   cost: 1 | 3 | 5;
-  previousQuestions: { question: string; answer: string }[];
-}): Promise<string> {
+  previousQuestions?: { question: string; answer: string }[];
+}): Promise<{ hintText: string }> {
   if (!isAIConfigured()) {
     throw new Error('MISSING_API_KEY: 未配置大模型密钥');
   }
@@ -615,7 +615,7 @@ export async function generateHintForMaster(params: {
 【主题】${params.theme}
 【线索价值要求】${costGuidance}
 【已进行的问答参考】
-${params.previousQuestions.map((q, idx) => `${idx + 1}. 问: "${q.question}" -> 答: "${q.answer}"`).join('\n') || '暂无'}
+${(params.previousQuestions || []).map((q, idx) => `${idx + 1}. 问: "${q.question}" -> 答: "${q.answer}"`).join('\n') || '暂无'}
 
 【构思要求】
 1. 语言简练，富有启发性，字数控制在 15~60 字以内；
@@ -630,10 +630,95 @@ ${params.previousQuestions.map((q, idx) => `${idx + 1}. 问: "${q.question}" -> 
   const jsonStr = await callLLM(systemPrompt, userPrompt, 0.4);
   try {
     const parsed = JSON.parse(jsonStr);
-    return String(parsed.hint || '').trim();
+    return { hintText: String(parsed.hint || '').trim() };
   } catch (err: any) {
-    return cleanJsonOutput(jsonStr);
+    return { hintText: cleanJsonOutput(jsonStr) };
   }
+}
+
+/**
+ * 8.7 智能语音转文字 (STT)：支持中文录音转录
+ */
+export async function transcribeAudioWithAI(
+  base64Data: string,
+  mimeType = 'audio/mp4'
+): Promise<string> {
+  const config = getAIConfig();
+  if (config.provider === 'none') {
+    throw new Error('未配置 AI 密钥');
+  }
+
+  // 提取纯 Base64 字符串
+  const cleanBase64 = base64Data.includes('base64,')
+    ? base64Data.split('base64,')[1]
+    : base64Data;
+
+  // 1. Google Gemini 原生多模态音频识别
+  if (config.provider === 'gemini') {
+    try {
+      const genAiOptions: any = { apiKey: config.apiKey };
+      if (config.baseUrl) {
+        genAiOptions.httpOptions = { baseUrl: config.baseUrl };
+      }
+      const client = new GoogleGenAI(genAiOptions);
+      const cleanMime = (mimeType.split(';')[0] || 'audio/mp4').trim();
+
+      const response = await client.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  data: cleanBase64,
+                  mimeType: cleanMime,
+                },
+              },
+              {
+                text: '请将这段中文语音内容转录为简体中文纯文本。只需输出转录得到的文字，不要包含任何多余的标点说明、问候或解释。若完全听不清，请输出“（语音模糊）”。',
+              },
+            ],
+          },
+        ],
+      });
+      return response.text?.trim() || '';
+    } catch (err: any) {
+      throw translateAIError(err);
+    }
+  }
+
+  // 2. OpenAI / Whisper 协议通道
+  if (config.provider === 'openai') {
+    try {
+      const baseUrl = config.baseUrl?.replace(/\/+$/, '') || 'https://api.openai.com/v1';
+      const buffer = Buffer.from(cleanBase64, 'base64');
+      const blob = new Blob([buffer], { type: mimeType });
+      const formData = new FormData();
+      formData.append('file', blob, 'audio.mp4');
+      formData.append('model', 'whisper-1');
+      formData.append('language', 'zh');
+
+      const res = await fetch(`${baseUrl}/audio/transcriptions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error(`Whisper 转录失败: ${res.statusText}`);
+      }
+
+      const json = await res.json();
+      return json.text?.trim() || '';
+    } catch (err: any) {
+      throw translateAIError(err);
+    }
+  }
+
+  throw new Error('当前服务暂不支持音频转文字');
 }
 
 

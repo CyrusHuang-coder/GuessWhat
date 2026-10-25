@@ -17,6 +17,7 @@ import {
 } from '../types/game';
 import { IRoomStore } from './interface';
 import { realtimeBroadcaster } from '../realtime/broadcaster';
+import { getRandomWordsByFilter } from '../data/wordBank';
 
 function generateRoomCode(): string {
   const chars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -158,6 +159,86 @@ export class KvRoomStore implements IRoomStore {
 
     await this.saveStored(code, data);
     return { room, playerToken: hostToken };
+  }
+
+  async createBotRoom(
+    nickname: string,
+    options?: { theme?: string; difficulty?: Difficulty }
+  ): Promise<{ room: Room; playerToken: string }> {
+    const code = generateRoomCode();
+    const now = new Date().toISOString();
+    const hostToken = crypto.randomUUID();
+    const botPlayerId = 'bot_player';
+    const theme = options?.theme || '日常物品';
+    const difficulty = options?.difficulty || 'easy';
+
+    const candidateWords = getRandomWordsByFilter(theme, difficulty, 1);
+    const chosenWord = candidateWords[0] || {
+      id: 'bot_fallback',
+      name: '橡皮擦',
+      theme: '日常物品',
+      difficulty: 'easy' as Difficulty,
+      note: '修正字迹的工具',
+    };
+
+    const room: Room = {
+      id: crypto.randomUUID(),
+      code,
+      status: 'in_game',
+      host_player_id: hostToken,
+      host_nickname: nickname.trim() || '人类侦探',
+      guest_player_id: botPlayerId,
+      guest_nickname: 'AI 智能出题官 (DeepSeek)',
+      host_last_active: now,
+      guest_last_active: now,
+      created_at: now,
+      updated_at: now,
+    };
+
+    const sessionId = crypto.randomUUID();
+    const session: GameSession = {
+      id: sessionId,
+      room_id: room.id,
+      round_number: 1,
+      status: 'playing',
+      question_master_id: botPlayerId,
+      guesser_id: hostToken,
+      theme,
+      difficulty,
+      mode: 'normal',
+      max_questions: 20,
+      secret_word: chosenWord.name,
+      secret_word_category: chosenWord.theme,
+      secret_word_note: chosenWord.note || null,
+      is_custom_word: false,
+      completed_questions_count: 0,
+      wrong_guesses_count: 0,
+      ai_quota_total: 2,
+      ai_quota_used: 0,
+      off_track_enabled: false,
+      result: null,
+      started_at: now,
+      ended_at: null,
+      created_at: now,
+    };
+
+    const data: StoredRoomData = {
+      room,
+      session,
+      questions: [],
+      guesses: [],
+      hints: [],
+      offTrackEvaluations: [],
+      matchHistory: [],
+    };
+
+    await this.saveStored(code, data);
+    return { room, playerToken: hostToken };
+  }
+
+  async getSecretWordForBot(code: string): Promise<string | null> {
+    const data = await this.getStored(code);
+    return data?.session?.secret_word || null;
   }
 
   async getRoomByCode(code: string): Promise<Room | null> {
