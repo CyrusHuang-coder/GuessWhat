@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { GameStateDTO } from '@/lib/types/game';
-import { Copy, Check, AlertTriangle, ArrowLeft, Smartphone, HelpCircle, X, ShieldCheck, Zap, Sparkles, ArrowLeftRight } from 'lucide-react';
+import { Copy, Check, AlertTriangle, ArrowLeft, Smartphone, HelpCircle, X, ShieldCheck, Zap, Sparkles, ArrowLeftRight, Volume2, VolumeX } from 'lucide-react';
 import { EngineBadge } from './EngineBadge';
 import { SurfaceLogo } from './SurfaceLogo';
 import { InstallPwaModal } from './InstallPwaModal';
+import { soundEffects } from '@/lib/audio/sound';
 
 interface Props {
   state: GameStateDTO;
@@ -20,6 +21,7 @@ export function RoomHeader({ state, playerToken, onRefresh }: Props) {
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [swappingRoles, setSwappingRoles] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(soundEffects.isEnabled());
   const { room, session, isHost, opponentOnline } = state;
 
   // 计算双方历史大比分
@@ -213,6 +215,18 @@ export function RoomHeader({ state, playerToken, onRefresh }: Props) {
               {getRoleBadge(room.guest_player_id)}
             </div>
           </div>
+
+          <button
+            onClick={() => setSoundEnabled(soundEffects.toggle())}
+            className={`p-1.5 rounded-game-sm border transition ${
+              soundEnabled
+                ? 'bg-warm-subtle hover:bg-warm-border text-sage-700 border-warm-border'
+                : 'bg-warm-bg text-ink-subtle border-warm-border'
+            }`}
+            title={soundEnabled ? '提示音已开启（点击静音）' : '提示音已关闭（点击开启）'}
+          >
+            {soundEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+          </button>
 
           <button
             onClick={() => setShowInstallModal(true)}

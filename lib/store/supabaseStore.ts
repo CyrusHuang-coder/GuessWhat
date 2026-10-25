@@ -1,6 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
   AnswerType,
+  ChatMessage,
   Difficulty,
   GameMode,
   GameSession,
@@ -13,6 +14,7 @@ import {
   PlayerRole,
   Question,
   Room,
+  WebRTCSignal,
 } from '../types/game';
 import { IRoomStore } from './interface';
 import { realtimeBroadcaster } from '../realtime/broadcaster';
@@ -28,6 +30,8 @@ function generateRoomCode(): string {
 
 export class SupabaseRoomStore implements IRoomStore {
   private client: SupabaseClient | null = null;
+  private chatMessagesByRoom: Map<string, ChatMessage[]> = new Map();
+  private webrtcSignalsByRoom: Map<string, WebRTCSignal[]> = new Map();
 
   constructor() {
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -103,12 +107,46 @@ export class SupabaseRoomStore implements IRoomStore {
     return data;
   }
 
-  async joinRoom(code: string, guestNickname: string): Promise<{ room: Room; playerToken: string }> {
+  async joinRoom(
+    code: string,
+    guestNickname: string,
+    options?: { reclaimRole?: 'host' | 'guest'; playerToken?: string }
+  ): Promise<{ room: Room; playerToken: string }> {
     const supabase = this.ensureClient();
     const room = await this.getRoomByCode(code);
     if (!room) throw new Error('房间不存在');
     if (room.status === 'ended') throw new Error('房间已解散');
-    if (room.guest_player_id) throw new Error('房间已满员');
+
+    if (room.guest_player_id) {
+      const trimmedNick = guestNickname.trim();
+
+      // 1. 指定身份为房主，或者输入的昵称与房主完全匹配
+      if (options?.reclaimRole === 'host' || (trimmedNick && trimmedNick === room.host_nickname)) {
+        return { room, playerToken: room.host_player_id };
+      }
+
+      // 2. 指定身份为客方，或者输入的昵称与客方完全匹配
+      if (options?.reclaimRole === 'guest' || (trimmedNick && trimmedNick === room.guest_nickname)) {
+        return { room, playerToken: room.guest_player_id };
+      }
+
+      // 3. 携带已有的 Token
+      if (options?.playerToken === room.host_player_id) {
+        return { room, playerToken: room.host_player_id };
+      }
+      if (options?.playerToken === room.guest_player_id) {
+        return { room, playerToken: room.guest_player_id };
+      }
+
+      const err: any = new Error(
+        `该房间已有两名玩家参与，无法再加入（出题人：${room.host_nickname}，猜词人：${room.guest_nickname}）。若您是其中一位，请选择对应身份直接恢复进入。`
+      );
+      err.isFull = true;
+      err.canReclaim = true;
+      err.hostNickname = room.host_nickname;
+      err.guestNickname = room.guest_nickname;
+      throw err;
+    }
 
     const guestToken = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -227,6 +265,7 @@ export class SupabaseRoomStore implements IRoomStore {
       myRole,
       isHost,
       opponentOnline,
+      chatMessages: (this.chatMessagesByRoom.get(code.toUpperCase()) || []).slice(-50),
     };
   }
 
@@ -401,6 +440,34 @@ export class SupabaseRoomStore implements IRoomStore {
       .eq('id', state.session.id);
 
     realtimeBroadcaster.notify(code.toUpperCase(), 'QUESTION_ANSWERED');
+    return q;
+  }
+
+  async reviseAnswer(
+    code: string,
+    playerToken: string,
+    questionId: string,
+    newAnswer: AnswerType
+  ): Promise<Question> {
+    const supabase = this.ensureClient();
+    const state = await this.getRoomState(code, playerToken);
+    if (!state?.session) throw new Error('对局未初始化');
+    if (state.session.question_master_id !== playerToken) throw new Error('只有出题人可以修正回答');
+    if (state.session.status !== 'playing') throw new Error('对局不在进行中');
+
+    const { data: q, error } = await supabase
+      .from('questions')
+      .update({
+        answer: newAnswer,
+        answered_at: new Date().toISOString(),
+      })
+      .eq('id', questionId)
+      .select()
+      .single();
+
+    if (error) throw new Error(error.message);
+
+    realtimeBroadcaster.notify(code.toUpperCase(), 'QUESTION_ANSWER_REVISED');
     return q;
   }
 
@@ -693,5 +760,79 @@ export class SupabaseRoomStore implements IRoomStore {
     };
     realtimeBroadcaster.notify(code.toUpperCase(), 'HINT_REJECTED');
     return hint;
+  }
+
+  async sendChatMessage(code: string, playerToken: string, text: string): Promise<ChatMessage> {
+    const uppercaseCode = code.toUpperCase();
+    const room = await this.getRoomByCode(uppercaseCode);
+    if (!room) throw new Error('房间不存在');
+
+    let senderNick = '旁观者';
+    if (playerToken === room.host_player_id) {
+      senderNick = room.host_nickname;
+    } else if (playerToken === room.guest_player_id) {
+      senderNick = room.guest_nickname || '猜词伙伴';
+    }
+
+    const message: ChatMessage = {
+      id: crypto.randomUUID(),
+      sender_id: playerToken,
+      sender_nickname: senderNick,
+      text: text.trim().slice(0, 100),
+      created_at: new Date().toISOString(),
+    };
+
+    let list = this.chatMessagesByRoom.get(uppercaseCode);
+    if (!list) {
+      list = [];
+      this.chatMessagesByRoom.set(uppercaseCode, list);
+    }
+    list.push(message);
+    if (list.length > 100) list.shift();
+
+    realtimeBroadcaster.notify(uppercaseCode, 'CHAT_MESSAGE');
+    return message;
+  }
+
+  async sendWebRTCSignal(
+    code: string,
+    playerToken: string,
+    signal: { type: 'offer' | 'answer' | 'candidate' | 'hangup'; payload: any }
+  ): Promise<WebRTCSignal> {
+    const uppercaseCode = code.toUpperCase();
+    const room = await this.getRoomByCode(uppercaseCode);
+    if (!room) throw new Error('房间不存在');
+
+    const item: WebRTCSignal = {
+      id: crypto.randomUUID(),
+      sender_id: playerToken,
+      type: signal.type,
+      payload: signal.payload,
+      created_at: new Date().toISOString(),
+    };
+
+    let list = this.webrtcSignalsByRoom.get(uppercaseCode);
+    if (!list) {
+      list = [];
+      this.webrtcSignalsByRoom.set(uppercaseCode, list);
+    }
+    list.push(item);
+    if (list.length > 50) list.shift();
+
+    realtimeBroadcaster.notify(uppercaseCode, 'WEBRTC_SIGNAL');
+    return item;
+  }
+
+  async getWebRTCSignals(
+    code: string,
+    playerToken: string,
+    since?: string
+  ): Promise<WebRTCSignal[]> {
+    const uppercaseCode = code.toUpperCase();
+    const list = this.webrtcSignalsByRoom.get(uppercaseCode) || [];
+    const sinceTime = since ? new Date(since).getTime() : 0;
+    return list.filter(
+      (s) => s.sender_id !== playerToken && new Date(s.created_at).getTime() > sinceTime
+    );
   }
 }

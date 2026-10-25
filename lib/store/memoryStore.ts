@@ -1,5 +1,6 @@
 import {
   AnswerType,
+  ChatMessage,
   Difficulty,
   GameMode,
   GameSession,
@@ -12,6 +13,7 @@ import {
   PlayerRole,
   Question,
   Room,
+  WebRTCSignal,
 } from '../types/game';
 import { IRoomStore } from './interface';
 import { realtimeBroadcaster } from '../realtime/broadcaster';
@@ -35,6 +37,8 @@ export class MemoryRoomStore implements IRoomStore {
   private hintsBySession: Map<string, HintExchange[]> = new Map();
   private offTrackEvaluationsBySession: Map<string, OffTrackEvaluation[]> = new Map();
   private matchHistoryByRoom: Map<string, MatchHistoryItem[]> = new Map();
+  private chatMessagesByRoom: Map<string, ChatMessage[]> = new Map();
+  private webrtcSignalsByRoom: Map<string, WebRTCSignal[]> = new Map();
 
   async createRoom(hostNickname: string): Promise<{ room: Room; playerToken: string }> {
     let code = generateRoomCode();
@@ -102,7 +106,11 @@ export class MemoryRoomStore implements IRoomStore {
     return this.rooms.get(code.toUpperCase()) || null;
   }
 
-  async joinRoom(code: string, guestNickname: string): Promise<{ room: Room; playerToken: string }> {
+  async joinRoom(
+    code: string,
+    guestNickname: string,
+    options?: { reclaimRole?: 'host' | 'guest'; playerToken?: string }
+  ): Promise<{ room: Room; playerToken: string }> {
     const uppercaseCode = code.toUpperCase();
     const room = this.rooms.get(uppercaseCode);
     if (!room) {
@@ -115,9 +123,37 @@ export class MemoryRoomStore implements IRoomStore {
     const sessionId = this.currentSessionByRoom.get(uppercaseCode);
     const session = sessionId ? this.sessions.get(sessionId) : null;
 
-    // 若已经有客方且玩家尝试重新进入
+    // 若已经有客方且玩家尝试重新进入（解决微信内置浏览器/多端切换导致的满员被拒）
     if (room.guest_player_id) {
-      throw new Error('该房间已有两名玩家参与，无法再加入');
+      const trimmedNick = guestNickname.trim();
+
+      // 1. 指定身份为房主，或者输入的昵称与房主完全匹配
+      if (options?.reclaimRole === 'host' || (trimmedNick && trimmedNick === room.host_nickname)) {
+        return { room, playerToken: room.host_player_id };
+      }
+
+      // 2. 指定身份为客方，或者输入的昵称与客方完全匹配
+      if (options?.reclaimRole === 'guest' || (trimmedNick && trimmedNick === room.guest_nickname)) {
+        return { room, playerToken: room.guest_player_id };
+      }
+
+      // 3. 携带已有的 Token（如重连）
+      if (options?.playerToken === room.host_player_id) {
+        return { room, playerToken: room.host_player_id };
+      }
+      if (options?.playerToken === room.guest_player_id) {
+        return { room, playerToken: room.guest_player_id };
+      }
+
+      // 4. 满员但提供结构化可恢复信息
+      const err: any = new Error(
+        `该房间已有两名玩家参与，无法再加入（出题人：${room.host_nickname}，猜词人：${room.guest_nickname}）。若您是其中一位，请选择对应身份直接恢复进入。`
+      );
+      err.isFull = true;
+      err.canReclaim = true;
+      err.hostNickname = room.host_nickname;
+      err.guestNickname = room.guest_nickname;
+      throw err;
     }
 
     const guestToken = crypto.randomUUID();
@@ -203,6 +239,7 @@ export class MemoryRoomStore implements IRoomStore {
 
     // 思路偏航预警仅猜词人可见
     const visibleEvaluations = myRole === 'guesser' ? offTrackEvaluations : [];
+    const chatMessages = this.chatMessagesByRoom.get(uppercaseCode) || [];
 
     return {
       room: { ...room },
@@ -215,6 +252,7 @@ export class MemoryRoomStore implements IRoomStore {
       myRole,
       isHost,
       opponentOnline,
+      chatMessages: [...chatMessages].slice(-50),
     };
   }
 
@@ -433,6 +471,40 @@ export class MemoryRoomStore implements IRoomStore {
     session.completed_questions_count += 1;
 
     realtimeBroadcaster.notify(uppercaseCode, 'QUESTION_ANSWERED');
+    return { ...question };
+  }
+
+  async reviseAnswer(
+    code: string,
+    playerToken: string,
+    questionId: string,
+    newAnswer: AnswerType
+  ): Promise<Question> {
+    const uppercaseCode = code.toUpperCase();
+    const sessionId = this.currentSessionByRoom.get(uppercaseCode);
+    if (!sessionId) throw new Error('对局未初始化');
+    const session = this.sessions.get(sessionId)!;
+
+    if (session.question_master_id !== playerToken) {
+      throw new Error('只有出题人可以修正回答');
+    }
+    if (session.status !== 'playing') {
+      throw new Error('对局不在进行中，无法修改答案');
+    }
+
+    const questions = this.questionsBySession.get(sessionId)!;
+    const question = questions.find((q) => q.id === questionId);
+    if (!question) {
+      throw new Error('找不到该问题');
+    }
+    if (question.status !== 'answered') {
+      throw new Error('只有已回答的问题可以修正答案');
+    }
+
+    question.answer = newAnswer;
+    question.answered_at = new Date().toISOString();
+
+    realtimeBroadcaster.notify(uppercaseCode, 'QUESTION_ANSWER_REVISED');
     return { ...question };
   }
 
@@ -903,6 +975,80 @@ export class MemoryRoomStore implements IRoomStore {
 
     list.push(historyItem);
     this.matchHistoryByRoom.set(roomCode, list);
+  }
+
+  async sendChatMessage(code: string, playerToken: string, text: string): Promise<ChatMessage> {
+    const uppercaseCode = code.toUpperCase();
+    const room = this.rooms.get(uppercaseCode);
+    if (!room) throw new Error('房间不存在');
+
+    let senderNick = '旁观者';
+    if (playerToken === room.host_player_id) {
+      senderNick = room.host_nickname;
+    } else if (playerToken === room.guest_player_id) {
+      senderNick = room.guest_nickname || '猜词伙伴';
+    }
+
+    const message: ChatMessage = {
+      id: crypto.randomUUID(),
+      sender_id: playerToken,
+      sender_nickname: senderNick,
+      text: text.trim().slice(0, 100),
+      created_at: new Date().toISOString(),
+    };
+
+    let list = this.chatMessagesByRoom.get(uppercaseCode);
+    if (!list) {
+      list = [];
+      this.chatMessagesByRoom.set(uppercaseCode, list);
+    }
+    list.push(message);
+    if (list.length > 100) list.shift();
+
+    realtimeBroadcaster.notify(uppercaseCode, 'CHAT_MESSAGE');
+    return message;
+  }
+
+  async sendWebRTCSignal(
+    code: string,
+    playerToken: string,
+    signal: { type: 'offer' | 'answer' | 'candidate' | 'hangup'; payload: any }
+  ): Promise<WebRTCSignal> {
+    const uppercaseCode = code.toUpperCase();
+    const room = this.rooms.get(uppercaseCode);
+    if (!room) throw new Error('房间不存在');
+
+    const item: WebRTCSignal = {
+      id: crypto.randomUUID(),
+      sender_id: playerToken,
+      type: signal.type,
+      payload: signal.payload,
+      created_at: new Date().toISOString(),
+    };
+
+    let list = this.webrtcSignalsByRoom.get(uppercaseCode);
+    if (!list) {
+      list = [];
+      this.webrtcSignalsByRoom.set(uppercaseCode, list);
+    }
+    list.push(item);
+    if (list.length > 50) list.shift();
+
+    realtimeBroadcaster.notify(uppercaseCode, 'WEBRTC_SIGNAL');
+    return item;
+  }
+
+  async getWebRTCSignals(
+    code: string,
+    playerToken: string,
+    since?: string
+  ): Promise<WebRTCSignal[]> {
+    const uppercaseCode = code.toUpperCase();
+    const list = this.webrtcSignalsByRoom.get(uppercaseCode) || [];
+    const sinceTime = since ? new Date(since).getTime() : 0;
+    return list.filter(
+      (s) => s.sender_id !== playerToken && new Date(s.created_at).getTime() > sinceTime
+    );
   }
 }
 

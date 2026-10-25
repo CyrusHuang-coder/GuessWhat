@@ -1,7 +1,8 @@
 'use client';
 
-import { Guess, HintExchange, Question } from '@/lib/types/game';
-import { HelpCircle, Target, CheckCircle2, XCircle, AlertCircle, Clock, MessageSquare, Lightbulb, Sparkles } from 'lucide-react';
+import { useState } from 'react';
+import { AnswerType, Guess, HintExchange, Question } from '@/lib/types/game';
+import { HelpCircle, Target, CheckCircle2, XCircle, AlertCircle, Clock, MessageSquare, Lightbulb, Sparkles, Edit3 } from 'lucide-react';
 
 interface Props {
   questions: Question[];
@@ -10,6 +11,8 @@ interface Props {
   completedCount: number;
   maxQuestions: number;
   isChallengeMode: boolean;
+  isQuestionMaster?: boolean;
+  onReviseAnswer?: (questionId: string, newAnswer: AnswerType) => Promise<void>;
 }
 
 export function QuestionTimeline({
@@ -19,7 +22,11 @@ export function QuestionTimeline({
   completedCount,
   maxQuestions,
   isChallengeMode,
+  isQuestionMaster,
+  onReviseAnswer,
 }: Props) {
+  const [activeReviseId, setActiveReviseId] = useState<string | null>(null);
+  const [submittingRevise, setSubmittingRevise] = useState(false);
   type TimelineItem =
     | { type: 'question'; data: Question; time: number }
     | { type: 'guess'; data: Guess; time: number }
@@ -136,9 +143,9 @@ export function QuestionTimeline({
                     </div>
 
                     {/* 回答结果标签 (图标 + 明确文字) */}
-                    <div className="shrink-0">
+                    <div className="shrink-0 flex flex-col items-end gap-1">
                       {q.status === 'answered' && (
-                        <div>
+                        <div className="flex items-center gap-1.5">
                           {q.answer === 'yes' && (
                             <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-status-okBg text-status-ok border border-status-okBorder shadow-2xs">
                               <CheckCircle2 className="w-3.5 h-3.5" />
@@ -157,6 +164,71 @@ export function QuestionTimeline({
                               不确定
                             </span>
                           )}
+
+                          {/* 出题人修正回答小按钮 */}
+                          {isQuestionMaster && onReviseAnswer && (
+                            <button
+                              type="button"
+                              onClick={() => setActiveReviseId(activeReviseId === q.id ? null : q.id)}
+                              className="text-[10px] text-ink-subtle hover:text-ink-text px-1.5 py-0.5 rounded border border-warm-border hover:bg-warm-bg transition flex items-center gap-0.5"
+                              title="点错了？点击修正此题回答"
+                            >
+                              <Edit3 className="w-2.5 h-2.5" />
+                              <span>改答</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* 弹出改答选项条 */}
+                      {isQuestionMaster && activeReviseId === q.id && (
+                        <div className="flex items-center gap-1 bg-warm-subtle p-1 rounded-game-sm border border-warm-border shadow-xs animate-in fade-in zoom-in-95 duration-100">
+                          <button
+                            type="button"
+                            disabled={submittingRevise || q.answer === 'yes'}
+                            onClick={async () => {
+                              setSubmittingRevise(true);
+                              await onReviseAnswer?.(q.id, 'yes');
+                              setSubmittingRevise(false);
+                              setActiveReviseId(null);
+                            }}
+                            className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-status-okBg text-status-ok border border-status-okBorder disabled:opacity-30 hover:opacity-80"
+                          >
+                            改是
+                          </button>
+                          <button
+                            type="button"
+                            disabled={submittingRevise || q.answer === 'no'}
+                            onClick={async () => {
+                              setSubmittingRevise(true);
+                              await onReviseAnswer?.(q.id, 'no');
+                              setSubmittingRevise(false);
+                              setActiveReviseId(null);
+                            }}
+                            className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-status-errBg text-status-err border border-status-errBorder disabled:opacity-30 hover:opacity-80"
+                          >
+                            改否
+                          </button>
+                          <button
+                            type="button"
+                            disabled={submittingRevise || q.answer === 'uncertain'}
+                            onClick={async () => {
+                              setSubmittingRevise(true);
+                              await onReviseAnswer?.(q.id, 'uncertain');
+                              setSubmittingRevise(false);
+                              setActiveReviseId(null);
+                            }}
+                            className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-status-warnBg text-status-warn border border-status-warnBorder disabled:opacity-30 hover:opacity-80"
+                          >
+                            改不确定
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setActiveReviseId(null)}
+                            className="px-1 py-0.5 text-[10px] text-ink-subtle hover:text-ink-text"
+                          >
+                            ✕
+                          </button>
                         </div>
                       )}
 

@@ -396,5 +396,87 @@ describe('游戏状态机与规则核心流程测试', () => {
     expect(stateHost?.myRole).toBe('question_master');
     expect(stateGuest?.myRole).toBe('guesser');
   });
+
+  it('多端/微信切出重新加入时无缝恢复身份测试 (避免满员报错)', async () => {
+    const { room, playerToken: hostToken } = await store.createRoom('黄天志');
+    const { playerToken: guestToken } = await store.joinRoom(room.code, '测试号');
+
+    // 模拟新设备或新浏览器输入相同昵称直接找回身份
+    const guestRejoin = await store.joinRoom(room.code, '测试号');
+    expect(guestRejoin.playerToken).toBe(guestToken);
+
+    // 房主在新浏览器输入房主昵称找回房主身份
+    const hostRejoin = await store.joinRoom(room.code, '黄天志');
+    expect(hostRejoin.playerToken).toBe(hostToken);
+
+    // 通过显式 reclaimRole 找回身份
+    const explicitHost = await store.joinRoom(room.code, '任意名', { reclaimRole: 'host' });
+    expect(explicitHost.playerToken).toBe(hostToken);
+
+    const explicitGuest = await store.joinRoom(room.code, '任意名', { reclaimRole: 'guest' });
+    expect(explicitGuest.playerToken).toBe(guestToken);
+
+    // 携带已有 Token 重连
+    const tokenRejoin = await store.joinRoom(room.code, '第三人', { playerToken: guestToken });
+    expect(tokenRejoin.playerToken).toBe(guestToken);
+  });
+
+  it('出题人点错答案修正回答测试', async () => {
+    const { room, playerToken: hostToken } = await store.createRoom('出题人');
+    const { playerToken: guestToken } = await store.joinRoom(room.code, '猜词人');
+
+    await store.saveSettings(room.code, guestToken, {
+      theme: '生活用品',
+      difficulty: 'easy',
+      mode: 'normal',
+    });
+    await store.setWord(room.code, hostToken, { word: '牙刷' });
+
+    // 猜词人提问
+    const q = await store.submitQuestion(room.code, guestToken, '它通常放在浴室里吗？');
+    // 出题人手滑点错回答了【不是】
+    await store.answerQuestion(room.code, hostToken, q.id, 'no');
+
+    let state = await store.getRoomState(room.code, guestToken);
+    expect(state?.questions[0].answer).toBe('no');
+
+    // 出题人立即改答为【是】
+    const revised = await store.reviseAnswer(room.code, hostToken, q.id, 'yes');
+    expect(revised.answer).toBe('yes');
+
+    // 验证猜词人视角看到的也是修改后的【是】
+    state = await store.getRoomState(room.code, guestToken);
+    expect(state?.questions[0].answer).toBe('yes');
+    // 有效回答计数保持为 1，不虚增
+    expect(state?.session?.completed_questions_count).toBe(1);
+  });
+
+  it('联机聊天室与 WebRTC 语音信令交互测试', async () => {
+    const { room, playerToken: hostToken } = await store.createRoom('出题人');
+    const { playerToken: guestToken } = await store.joinRoom(room.code, '猜词人');
+
+    // 猜词人发送调侃消息
+    const msg = await store.sendChatMessage(room.code, guestToken, '太难啦！给点线索嘛🥺');
+    expect(msg.text).toBe('太难啦！给点线索嘛🥺');
+    expect(msg.sender_nickname).toBe('猜词人');
+
+    // 检查状态中是否包含聊天消息
+    const state = await store.getRoomState(room.code, hostToken);
+    expect(state?.chatMessages).toBeDefined();
+    expect(state?.chatMessages?.length).toBe(1);
+    expect(state?.chatMessages?.[0].text).toBe('太难啦！给点线索嘛🥺');
+
+    // 房主发起 WebRTC offer 信令
+    await store.sendWebRTCSignal(room.code, hostToken, {
+      type: 'offer',
+      payload: { sdp: 'fake-offer-sdp' },
+    });
+
+    // 猜词人拉取收到的信令
+    const guestSignals = await store.getWebRTCSignals(room.code, guestToken);
+    expect(guestSignals.length).toBe(1);
+    expect(guestSignals[0].type).toBe('offer');
+    expect(guestSignals[0].payload.sdp).toBe('fake-offer-sdp');
+  });
 });
 

@@ -65,6 +65,12 @@ export default function HomePage() {
   const [joining, setJoining] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+  const [reclaimInfo, setReclaimInfo] = useState<{
+    code: string;
+    hostNickname: string;
+    guestNickname: string;
+  } | null>(null);
+  const [reclaiming, setReclaiming] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
 
@@ -122,13 +128,48 @@ export default function HomePage() {
         body: JSON.stringify({ guestNickname: finalNick }),
       });
       const data = await res.json();
-      if (!data.success) throw new Error(data.error);
+      if (!data.success) {
+        if (data.canReclaim) {
+          setReclaimInfo({
+            code,
+            hostNickname: data.hostNickname,
+            guestNickname: data.guestNickname,
+          });
+          setJoining(false);
+          return;
+        }
+        throw new Error(data.error);
+      }
 
       savePlayerToken(code, data.playerToken, finalNick);
       router.push(`/room/${code}`);
     } catch (err: any) {
       setError(err.message || '加入房间失败');
       setJoining(false);
+    }
+  };
+
+  const handleReclaimOnHome = async (role: 'host' | 'guest') => {
+    if (!reclaimInfo || reclaiming) return;
+    setReclaiming(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/rooms/${reclaimInfo.code}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reclaimRole: role }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+
+      const nick = role === 'host' ? reclaimInfo.hostNickname : reclaimInfo.guestNickname;
+      savePlayerToken(reclaimInfo.code, data.playerToken, nick);
+      router.push(`/room/${reclaimInfo.code}`);
+    } catch (err: any) {
+      setError(err.message || '恢复身份失败');
+    } finally {
+      setReclaiming(false);
     }
   };
 
@@ -600,6 +641,68 @@ export default function HomePage() {
         isOpen={showInstallModal}
         onClose={() => setShowInstallModal(false)}
       />
+
+      {/* 房间满员但支持身份恢复弹窗 */}
+      {reclaimInfo && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-game border border-warm-border p-6 shadow-board max-w-sm w-full space-y-4 text-center animate-in fade-in zoom-in-95 duration-150">
+            <div className="w-12 h-12 rounded-full bg-sage-100 text-sage-600 flex items-center justify-center mx-auto">
+              <Users className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-ink-text">恢复房间对局身份</h3>
+              <p className="text-xs text-ink-muted mt-1 leading-relaxed">
+                房间 <strong className="text-sage-700 font-mono">{reclaimInfo.code}</strong> 正在进行对局。<br />
+                若您刚从微信或其它设备切换过来，请选择您在这场游戏中的角色直接恢复：
+              </p>
+            </div>
+
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                disabled={reclaiming}
+                onClick={() => handleReclaimOnHome('host')}
+                className="w-full py-2.5 px-3 bg-sage-50 hover:bg-sage-100 border border-sage-300 rounded-game-sm text-left flex items-center justify-between transition"
+              >
+                <div>
+                  <div className="font-bold text-xs text-sage-900">
+                    我是 {reclaimInfo.hostNickname}
+                  </div>
+                  <div className="text-[10px] text-sage-600">本局出题人 / 房主</div>
+                </div>
+                <span className="text-xs font-bold text-sage-700">
+                  {reclaiming ? '进入中...' : '一键恢复 →'}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                disabled={reclaiming}
+                onClick={() => handleReclaimOnHome('guest')}
+                className="w-full py-2.5 px-3 bg-terracotta-50 hover:bg-terracotta-100 border border-terracotta-300 rounded-game-sm text-left flex items-center justify-between transition"
+              >
+                <div>
+                  <div className="font-bold text-xs text-terracotta-900">
+                    我是 {reclaimInfo.guestNickname}
+                  </div>
+                  <div className="text-[10px] text-terracotta-600">本局猜词人 / 客方</div>
+                </div>
+                <span className="text-xs font-bold text-terracotta-700">
+                  {reclaiming ? '进入中...' : '一键恢复 →'}
+                </span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setReclaimInfo(null)}
+              className="w-full py-1.5 text-xs text-ink-subtle hover:text-ink-text transition"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

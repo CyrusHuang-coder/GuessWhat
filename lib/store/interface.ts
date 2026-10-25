@@ -1,5 +1,6 @@
 import {
   AnswerType,
+  ChatMessage,
   Difficulty,
   GameMode,
   GameSession,
@@ -10,12 +11,17 @@ import {
   OffTrackEvaluation,
   Question,
   Room,
+  WebRTCSignal,
 } from '../types/game';
 
 export interface IRoomStore {
   createRoom(hostNickname: string): Promise<{ room: Room; playerToken: string }>;
   getRoomByCode(code: string): Promise<Room | null>;
-  joinRoom(code: string, guestNickname: string): Promise<{ room: Room; playerToken: string }>;
+  joinRoom(
+    code: string,
+    guestNickname: string,
+    options?: { reclaimRole?: 'host' | 'guest'; playerToken?: string }
+  ): Promise<{ room: Room; playerToken: string }>;
   updateHeartbeat(code: string, playerToken: string): Promise<boolean>;
   getRoomState(code: string, playerToken?: string): Promise<GameStateDTO | null>;
 
@@ -53,6 +59,23 @@ export interface IRoomStore {
     questionId: string,
     answer: AnswerType
   ): Promise<Question>;
+
+  reviseAnswer(
+    code: string,
+    playerToken: string,
+    questionId: string,
+    newAnswer: AnswerType
+  ): Promise<Question>;
+
+  sendChatMessage(code: string, playerToken: string, text: string): Promise<ChatMessage>;
+
+  sendWebRTCSignal(
+    code: string,
+    playerToken: string,
+    signal: { type: 'offer' | 'answer' | 'candidate' | 'hangup'; payload: any }
+  ): Promise<WebRTCSignal>;
+
+  getWebRTCSignals(code: string, playerToken: string, since?: string): Promise<WebRTCSignal[]>;
 
   clarifyQuestion(
     code: string,

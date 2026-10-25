@@ -146,6 +146,23 @@ export interface GameStateDTO {
   myRole: PlayerRole | 'spectator';
   isHost: boolean;
   opponentOnline: boolean;
+  chatMessages?: ChatMessage[];
+}
+
+export interface ChatMessage {
+  id: string;
+  sender_id: string;
+  sender_nickname: string;
+  text: string;
+  created_at: string;
+}
+
+export interface WebRTCSignal {
+  id: string;
+  sender_id: string;
+  type: 'offer' | 'answer' | 'candidate' | 'hangup';
+  payload: any;
+  created_at: string;
 }
 
 export interface AIRecommendation {

@@ -1,8 +1,8 @@
 'use client';
 
-import { use, useEffect, useState, useCallback } from 'react';
+import { use, useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { GameStateDTO } from '@/lib/types/game';
+import { AnswerType, GameStateDTO } from '@/lib/types/game';
 import { RoomHeader } from '@/components/RoomHeader';
 import { GameSettingsModal } from '@/components/GameSettingsModal';
 import { WordSelectionModal } from '@/components/WordSelectionModal';
@@ -12,7 +12,10 @@ import { MasterControls } from '@/components/MasterControls';
 import { GuesserSidebar } from '@/components/GuesserSidebar';
 import { MasterSidebar } from '@/components/MasterSidebar';
 import { SettlementModal } from '@/components/SettlementModal';
-import { Copy, Check, Users, Loader2, UserPlus } from 'lucide-react';
+import { VoiceCallBar } from '@/components/VoiceCallBar';
+import { RoomChatDrawer } from '@/components/RoomChatDrawer';
+import { soundEffects } from '@/lib/audio/sound';
+import { Copy, Check, Users, Loader2, UserPlus, ArrowRight } from 'lucide-react';
 import { getPlayerToken, savePlayerToken, saveRecentRoom } from '@/lib/store/localHistory';
 
 interface PageProps {
@@ -29,14 +32,24 @@ export default function RoomPage({ params }: PageProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 快捷加入表单状态（如果直接打开链接进入）
+  // 快捷加入与身份恢复表单状态
   const [needsJoin, setNeedsJoin] = useState(false);
+  const [needsReclaim, setNeedsReclaim] = useState(false);
+  const [reclaiming, setReclaiming] = useState(false);
   const [joinNickname, setJoinNickname] = useState('');
   const [joining, setJoining] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
   // 跨组件填入推荐问题
   const [presetQuestion, setPresetQuestion] = useState<string>('');
+
+  // 记录上一轮快照以触发高保真提示音
+  const prevSnapshotRef = useRef<{
+    questionsCount: number;
+    answeredCount: number;
+    guessesCount: number;
+    settled: boolean;
+  }>({ questionsCount: 0, answeredCount: 0, guessesCount: 0, settled: false });
 
   // 获取房间状态 (内置轻量重试以抵御 Serverless 路由漂移)
   const fetchState = useCallback(async (token?: string, retries = 2): Promise<GameStateDTO | null> => {
@@ -56,9 +69,41 @@ export default function RoomPage({ params }: PageProps) {
         }
         throw new Error(data.error || '获取房间数据失败');
       }
-      setGameState(data.data);
+      const newState = data.data as GameStateDTO;
+      setGameState(newState);
       setError(null);
-      return data.data as GameStateDTO;
+
+      // 智能触发提示音 (Ding! / 胜利音效)
+      const prev = prevSnapshotRef.current;
+      const currentAnswered = newState.questions.filter((q) => q.status === 'answered').length;
+
+      if (prev.questionsCount > 0 || prev.answeredCount > 0) {
+        // 猜词人听到回答
+        if (newState.myRole === 'guesser' && currentAnswered > prev.answeredCount) {
+          soundEffects.playDing();
+        }
+        // 出题人听到新提问
+        if (newState.myRole === 'question_master' && newState.questions.length > prev.questionsCount) {
+          soundEffects.playDing();
+        }
+        // 出题人听到正式猜词
+        if (newState.myRole === 'question_master' && newState.guesses.length > prev.guessesCount) {
+          soundEffects.playDing();
+        }
+        // 猜中揭晓胜利和弦
+        if (!prev.settled && newState.session?.status === 'settled' && newState.session.result === 'guessed') {
+          soundEffects.playVictory();
+        }
+      }
+
+      prevSnapshotRef.current = {
+        questionsCount: newState.questions.length,
+        answeredCount: currentAnswered,
+        guessesCount: newState.guesses.length,
+        settled: newState.session?.status === 'settled',
+      };
+
+      return newState;
     } catch (err: any) {
       if (retries > 0) {
         await new Promise((r) => setTimeout(r, 400));
@@ -95,7 +140,8 @@ export default function RoomPage({ params }: PageProps) {
           if (!state.room.guest_player_id) {
             setNeedsJoin(true);
           } else {
-            setError('该房间当前已有两名玩家正在进行对局。如果您是该房间玩家，请在原浏览器中继续游玩。');
+            // 两人已在房间中，直接唤起身份恢复选项卡（完美解决微信切浏览器或多端登录满员问题）
+            setNeedsReclaim(true);
           }
         }
       }
@@ -193,7 +239,14 @@ export default function RoomPage({ params }: PageProps) {
         body: JSON.stringify({ guestNickname: finalNick }),
       });
       const data = await res.json();
-      if (!data.success) throw new Error(data.error);
+      if (!data.success) {
+        if (data.canReclaim) {
+          setNeedsJoin(false);
+          setNeedsReclaim(true);
+          return;
+        }
+        throw new Error(data.error);
+      }
 
       savePlayerToken(code, data.playerToken, finalNick);
       setPlayerToken(data.playerToken);
@@ -214,6 +267,66 @@ export default function RoomPage({ params }: PageProps) {
       setError(err.message || '加入房间失败');
     } finally {
       setJoining(false);
+    }
+  };
+
+  // 微信/多设备身份恢复一键接管
+  const handleReclaim = async (role: 'host' | 'guest') => {
+    if (reclaiming || !gameState) return;
+    setReclaiming(true);
+    setError(null);
+
+    try {
+      const res = await fetch(`/api/rooms/${code}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reclaimRole: role }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+
+      const myNick = role === 'host' ? data.room.host_nickname : data.room.guest_nickname;
+      savePlayerToken(code, data.playerToken, myNick);
+      setPlayerToken(data.playerToken);
+      setNeedsReclaim(false);
+      setNeedsJoin(false);
+
+      const state = await fetchState(data.playerToken);
+      if (state) {
+        saveRecentRoom({
+          code: state.room.code,
+          myNickname: myNick,
+          opponentNickname: role === 'host' ? state.room.guest_nickname : state.room.host_nickname,
+          role,
+          roundNumber: state.session?.round_number ?? 1,
+          status: state.room.status,
+          updatedAt: Date.now(),
+        });
+      }
+    } catch (err: any) {
+      setError(err.message || '恢复身份失败');
+    } finally {
+      setReclaiming(false);
+    }
+  };
+
+  // 出题人修改回答
+  const handleReviseAnswer = async (questionId: string, newAnswer: AnswerType) => {
+    try {
+      const res = await fetch(`/api/rooms/${code}/questions/${questionId}/answer`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-player-token': playerToken,
+        },
+        body: JSON.stringify({ answer: newAnswer }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      soundEffects.playPop();
+      fetchState();
+    } catch (err: any) {
+      alert(`修改回答失败: ${err.message}`);
     }
   };
 
@@ -328,6 +441,70 @@ export default function RoomPage({ params }: PageProps) {
     );
   }
 
+  // 微信/多设备跨端进入时的身份一键恢复面板（彻底解决“满员进不去”难题）
+  if (needsReclaim && gameState) {
+    return (
+      <div className="min-h-screen bg-warm-bg flex items-center justify-center p-4">
+        <div className="bg-white p-6 sm:p-8 rounded-game border border-warm-border shadow-board max-w-md w-full space-y-4 text-center animate-in fade-in zoom-in-95 duration-150">
+          <div className="w-12 h-12 rounded-full bg-sage-100 text-sage-600 flex items-center justify-center mx-auto">
+            <Users className="w-6 h-6" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-ink-text">恢复房间对局身份</h2>
+            <p className="text-xs text-ink-muted mt-1 leading-relaxed">
+              房间 <strong className="text-sage-700 font-mono">{code}</strong> 正在进行对局。<br />
+              若您刚从微信、其它手机或电脑浏览器切过来，请选择您在这场游戏中的角色直接恢复：
+            </p>
+          </div>
+
+          {error && (
+            <div className="p-2.5 bg-status-errBg text-status-err text-xs rounded-game-sm border border-status-errBorder">
+              {error}
+            </div>
+          )}
+
+          <div className="space-y-2.5 pt-2">
+            <button
+              type="button"
+              disabled={reclaiming}
+              onClick={() => handleReclaim('host')}
+              className="w-full py-3 px-4 bg-sage-50 hover:bg-sage-100 border border-sage-300 rounded-game-sm text-left flex items-center justify-between group transition shadow-2xs"
+            >
+              <div>
+                <div className="font-bold text-xs text-sage-900">
+                  我是 {gameState.room.host_nickname}
+                </div>
+                <div className="text-[11px] text-sage-600">本局出题人 / 房主</div>
+              </div>
+              <span className="text-xs font-bold text-sage-700 flex items-center gap-1 group-hover:translate-x-0.5 transition">
+                <span>{reclaiming ? '正在进入...' : '一键恢复'}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </span>
+            </button>
+
+            <button
+              type="button"
+              disabled={reclaiming}
+              onClick={() => handleReclaim('guest')}
+              className="w-full py-3 px-4 bg-terracotta-50 hover:bg-terracotta-100 border border-terracotta-300 rounded-game-sm text-left flex items-center justify-between group transition shadow-2xs"
+            >
+              <div>
+                <div className="font-bold text-xs text-terracotta-900">
+                  我是 {gameState.room.guest_nickname}
+                </div>
+                <div className="text-[11px] text-terracotta-600">本局猜词人 / 客方</div>
+              </div>
+              <span className="text-xs font-bold text-terracotta-700 flex items-center gap-1 group-hover:translate-x-0.5 transition">
+                <span>{reclaiming ? '正在进入...' : '一键恢复'}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (!gameState) return null;
 
   const { room, session, myRole } = gameState;
@@ -342,7 +519,17 @@ export default function RoomPage({ params }: PageProps) {
       />
 
       {/* 主工作区 */}
-      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 flex flex-col justify-between">
+      <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 flex flex-col justify-between space-y-4">
+        {/* 双人实时语音连麦栏 */}
+        {room.guest_player_id && (
+          <VoiceCallBar
+            roomCode={code}
+            playerToken={playerToken}
+            opponentOnline={gameState.opponentOnline}
+            hasGuest={Boolean(room.guest_player_id)}
+          />
+        )}
+
         {/* 阶段 1: 等待第二位玩家加入 */}
         {room.status === 'waiting_player' && (
           <div className="my-auto py-12 text-center max-w-md mx-auto bg-white p-8 rounded-game border border-warm-border shadow-board space-y-4">
@@ -396,6 +583,8 @@ export default function RoomPage({ params }: PageProps) {
                 completedCount={session.completed_questions_count}
                 maxQuestions={session.max_questions}
                 isChallengeMode={session.mode === 'challenge'}
+                isQuestionMaster={myRole === 'question_master'}
+                onReviseAnswer={handleReviseAnswer}
               />
 
               {/* 游戏主区下方操作流程 */}
@@ -463,6 +652,21 @@ export default function RoomPage({ params }: PageProps) {
       {/* 结算弹窗 */}
       {session?.status === 'settled' && (
         <SettlementModal state={gameState} roomCode={code} playerToken={playerToken} />
+      )}
+
+      {/* 浮动联机聊天室 */}
+      {room.status === 'in_game' && (
+        <RoomChatDrawer
+          roomCode={code}
+          playerToken={playerToken}
+          chatMessages={gameState.chatMessages || []}
+          myNickname={
+            myRole === 'question_master'
+              ? room.host_nickname
+              : room.guest_nickname || '猜词伙伴'
+          }
+          onRefresh={() => fetchState()}
+        />
       )}
     </div>
   );

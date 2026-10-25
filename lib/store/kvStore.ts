@@ -1,5 +1,6 @@
 import {
   AnswerType,
+  ChatMessage,
   Difficulty,
   GameMode,
   GameSession,
@@ -12,6 +13,7 @@ import {
   PlayerRole,
   Question,
   Room,
+  WebRTCSignal,
 } from '../types/game';
 import { IRoomStore } from './interface';
 import { realtimeBroadcaster } from '../realtime/broadcaster';
@@ -33,6 +35,8 @@ interface StoredRoomData {
   hints: HintExchange[];
   offTrackEvaluations: OffTrackEvaluation[];
   matchHistory: MatchHistoryItem[];
+  chatMessages?: ChatMessage[];
+  webrtcSignals?: WebRTCSignal[];
 }
 
 export class KvRoomStore implements IRoomStore {
@@ -161,11 +165,46 @@ export class KvRoomStore implements IRoomStore {
     return data?.room || null;
   }
 
-  async joinRoom(code: string, guestNickname: string): Promise<{ room: Room; playerToken: string }> {
+  async joinRoom(
+    code: string,
+    guestNickname: string,
+    options?: { reclaimRole?: 'host' | 'guest'; playerToken?: string }
+  ): Promise<{ room: Room; playerToken: string }> {
     const data = await this.getStored(code);
     if (!data) throw new Error('房间不存在，请检查房间码');
     if (data.room.status === 'ended') throw new Error('该房间已解散');
-    if (data.room.guest_player_id) throw new Error('该房间已有两名玩家参与，无法再加入');
+
+    if (data.room.guest_player_id) {
+      const trimmedNick = guestNickname.trim();
+
+      // 1. 指定身份为房主，或者输入的昵称与房主完全匹配
+      if (options?.reclaimRole === 'host' || (trimmedNick && trimmedNick === data.room.host_nickname)) {
+        return { room: data.room, playerToken: data.room.host_player_id };
+      }
+
+      // 2. 指定身份为客方，或者输入的昵称与客方完全匹配
+      if (options?.reclaimRole === 'guest' || (trimmedNick && trimmedNick === data.room.guest_nickname)) {
+        return { room: data.room, playerToken: data.room.guest_player_id };
+      }
+
+      // 3. 携带已有的 Token（如重连）
+      if (options?.playerToken === data.room.host_player_id) {
+        return { room: data.room, playerToken: data.room.host_player_id };
+      }
+      if (options?.playerToken === data.room.guest_player_id) {
+        return { room: data.room, playerToken: data.room.guest_player_id };
+      }
+
+      // 4. 满员但提供结构化可恢复信息
+      const err: any = new Error(
+        `该房间已有两名玩家参与，无法再加入（出题人：${data.room.host_nickname}，猜词人：${data.room.guest_nickname}）。若您是其中一位，请选择对应身份直接恢复进入。`
+      );
+      err.isFull = true;
+      err.canReclaim = true;
+      err.hostNickname = data.room.host_nickname;
+      err.guestNickname = data.room.guest_nickname;
+      throw err;
+    }
 
     const guestToken = crypto.randomUUID();
     const now = new Date().toISOString();
@@ -245,6 +284,7 @@ export class KvRoomStore implements IRoomStore {
       myRole,
       isHost,
       opponentOnline,
+      chatMessages: (data.chatMessages || []).slice(-50),
     };
   }
 
@@ -400,6 +440,29 @@ export class KvRoomStore implements IRoomStore {
     data.session.completed_questions_count += 1;
     await this.saveStored(code, data);
     realtimeBroadcaster.notify(code.toUpperCase(), 'QUESTION_ANSWERED');
+    return { ...question };
+  }
+
+  async reviseAnswer(
+    code: string,
+    playerToken: string,
+    questionId: string,
+    newAnswer: AnswerType
+  ): Promise<Question> {
+    const data = await this.getStored(code);
+    if (!data || !data.session) throw new Error('对局未初始化');
+    if (data.session.question_master_id !== playerToken) throw new Error('只有出题人可以修正回答');
+    if (data.session.status !== 'playing') throw new Error('对局不在进行中');
+
+    const question = data.questions.find((q) => q.id === questionId);
+    if (!question) throw new Error('未找到指定问题');
+    if (question.status !== 'answered') throw new Error('只有已回答的问题可以修正答案');
+
+    question.answer = newAnswer;
+    question.answered_at = new Date().toISOString();
+
+    await this.saveStored(code, data);
+    realtimeBroadcaster.notify(code.toUpperCase(), 'QUESTION_ANSWER_REVISED');
     return { ...question };
   }
 
@@ -737,6 +800,73 @@ export class KvRoomStore implements IRoomStore {
     };
 
     data.matchHistory.push(historyItem);
+  }
+
+  async sendChatMessage(code: string, playerToken: string, text: string): Promise<ChatMessage> {
+    const data = await this.getStored(code);
+    if (!data) throw new Error('房间不存在');
+
+    let senderNick = '旁观者';
+    if (playerToken === data.room.host_player_id) {
+      senderNick = data.room.host_nickname;
+    } else if (playerToken === data.room.guest_player_id) {
+      senderNick = data.room.guest_nickname || '猜词伙伴';
+    }
+
+    const message: ChatMessage = {
+      id: crypto.randomUUID(),
+      sender_id: playerToken,
+      sender_nickname: senderNick,
+      text: text.trim().slice(0, 100),
+      created_at: new Date().toISOString(),
+    };
+
+    if (!data.chatMessages) data.chatMessages = [];
+    data.chatMessages.push(message);
+    if (data.chatMessages.length > 100) data.chatMessages.shift();
+
+    await this.saveStored(code, data);
+    realtimeBroadcaster.notify(code.toUpperCase(), 'CHAT_MESSAGE');
+    return message;
+  }
+
+  async sendWebRTCSignal(
+    code: string,
+    playerToken: string,
+    signal: { type: 'offer' | 'answer' | 'candidate' | 'hangup'; payload: any }
+  ): Promise<WebRTCSignal> {
+    const data = await this.getStored(code);
+    if (!data) throw new Error('房间不存在');
+
+    const item: WebRTCSignal = {
+      id: crypto.randomUUID(),
+      sender_id: playerToken,
+      type: signal.type,
+      payload: signal.payload,
+      created_at: new Date().toISOString(),
+    };
+
+    if (!data.webrtcSignals) data.webrtcSignals = [];
+    data.webrtcSignals.push(item);
+    if (data.webrtcSignals.length > 50) data.webrtcSignals.shift();
+
+    await this.saveStored(code, data);
+    realtimeBroadcaster.notify(code.toUpperCase(), 'WEBRTC_SIGNAL');
+    return item;
+  }
+
+  async getWebRTCSignals(
+    code: string,
+    playerToken: string,
+    since?: string
+  ): Promise<WebRTCSignal[]> {
+    const data = await this.getStored(code);
+    if (!data) return [];
+    const list = data.webrtcSignals || [];
+    const sinceTime = since ? new Date(since).getTime() : 0;
+    return list.filter(
+      (s) => s.sender_id !== playerToken && new Date(s.created_at).getTime() > sinceTime
+    );
   }
 }
 
