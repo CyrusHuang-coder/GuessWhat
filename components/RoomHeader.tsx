@@ -3,11 +3,12 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { GameStateDTO } from '@/lib/types/game';
-import { Copy, Check, AlertTriangle, ArrowLeft, Smartphone, HelpCircle, X, ShieldCheck, Zap, Sparkles, ArrowLeftRight, Volume2, VolumeX } from 'lucide-react';
+import { Copy, Check, AlertTriangle, ArrowLeft, Smartphone, HelpCircle, X, ShieldCheck, Zap, Sparkles, ArrowLeftRight, Volume2, VolumeX, Pin } from 'lucide-react';
 import { EngineBadge } from './EngineBadge';
 import { SurfaceLogo } from './SurfaceLogo';
 import { InstallPwaModal } from './InstallPwaModal';
 import { soundEffects } from '@/lib/audio/sound';
+import { togglePinRoom, isRoomPinned } from '@/lib/store/localHistory';
 
 interface Props {
   state: GameStateDTO;
@@ -22,7 +23,14 @@ export function RoomHeader({ state, playerToken, onRefresh }: Props) {
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [swappingRoles, setSwappingRoles] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(soundEffects.isEnabled());
+  const [pinned, setPinned] = useState(() => isRoomPinned(state.room.code));
   const { room, session, isHost, opponentOnline } = state;
+
+  const handleTogglePin = () => {
+    const next = togglePinRoom(room.code);
+    setPinned(next);
+    soundEffects.playPop();
+  };
 
   // 计算双方历史大比分
   const hostNick = room.host_nickname;
@@ -122,14 +130,27 @@ export function RoomHeader({ state, playerToken, onRefresh }: Props) {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="font-bold text-ink-text text-base">GuessWhat</h1>
-              <button
-                onClick={copyInviteLink}
-                className="flex items-center gap-1 px-2.5 py-0.5 rounded-game-sm bg-warm-subtle hover:bg-warm-border text-ink-text text-xs font-mono font-medium transition border border-warm-border"
-                title="点击复制房间链接分享给好友"
-              >
-                <span>房间: {room.code}</span>
-                {copied ? <Check className="w-3 h-3 text-sage-600" /> : <Copy className="w-3 h-3 text-ink-subtle" />}
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={copyInviteLink}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-game-sm bg-warm-subtle hover:bg-warm-border text-ink-text text-xs font-mono font-medium transition border border-warm-border"
+                  title="点击复制房间链接分享给好友"
+                >
+                  <span>房间: {room.code}</span>
+                  {copied ? <Check className="w-3 h-3 text-sage-600" /> : <Copy className="w-3 h-3 text-ink-subtle" />}
+                </button>
+                <button
+                  onClick={handleTogglePin}
+                  className={`p-1 rounded-game-sm border transition ${
+                    pinned
+                      ? 'bg-terracotta-50 border-terracotta-200 text-terracotta-600'
+                      : 'bg-warm-subtle hover:bg-warm-border border-warm-border text-ink-subtle hover:text-ink-text'
+                  }`}
+                  title={pinned ? '已置顶此常用房间（点击取消）' : '置顶此常用房间'}
+                >
+                  <Pin className={`w-3 h-3 -rotate-45 ${pinned ? 'fill-current text-terracotta-600' : ''}`} />
+                </button>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-2 text-xs text-ink-muted mt-0.5">
               <span>第 {session?.round_number ?? 1} 局</span>

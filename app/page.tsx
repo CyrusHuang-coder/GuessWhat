@@ -19,17 +19,20 @@ import {
   Play,
   RotateCcw,
   Check,
+  Pin,
 } from 'lucide-react';
 import { InstallPwaModal } from '@/components/InstallPwaModal';
 import {
   getRecentRooms,
   removeRecentRoom,
   savePlayerToken,
+  togglePinRoom,
   getUserPreferences,
   saveUserPreferences,
   RecentRoomItem,
   UserPreferences,
 } from '@/lib/store/localHistory';
+import { soundEffects } from '@/lib/audio/sound';
 
 type MainTab = 'play' | 'history' | 'prefs' | 'rules';
 
@@ -186,6 +189,13 @@ export default function HomePage() {
     }
   };
 
+  // 切换置顶房间
+  const handleTogglePin = (code: string) => {
+    togglePinRoom(code);
+    setRecentRooms(getRecentRooms());
+    soundEffects.playPop();
+  };
+
   // 保存偏好设置
   const handleSavePreferences = (e: React.FormEvent) => {
     e.preventDefault();
@@ -303,6 +313,12 @@ export default function HomePage() {
                   <div className="flex items-center justify-center sm:justify-start gap-2">
                     <span className="w-2 h-2 rounded-full bg-sage-500 animate-pulse" />
                     <span className="text-xs font-bold text-sage-900">检测到正在进行的对局</span>
+                    {activeRecent.isPinned && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-terracotta-700 bg-terracotta-100/80 px-1.5 py-0.2 rounded border border-terracotta-300">
+                        <Pin className="w-2.5 h-2.5 -rotate-45 fill-current" />
+                        <span>置顶</span>
+                      </span>
+                    )}
                     <span className="text-[10px] font-mono bg-sage-100 text-sage-700 px-1.5 py-0.2 rounded border border-sage-200">
                       {activeRecent.code}
                     </span>
@@ -461,10 +477,24 @@ export default function HomePage() {
                 {recentRooms.map((r) => (
                   <div
                     key={r.code}
-                    className="p-4 bg-white rounded-game border border-warm-border shadow-2xs flex items-center justify-between gap-3 hover:border-sage-300 transition"
+                    className={`p-4 rounded-game border transition flex items-center justify-between gap-3 ${
+                      r.isPinned
+                        ? 'bg-amber-50/25 border-sage-400 shadow-md ring-1 ring-sage-400/30'
+                        : 'bg-white border-warm-border shadow-2xs hover:border-sage-300'
+                    }`}
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
+                        {/* 置顶大头针标志 */}
+                        {r.isPinned && (
+                          <span
+                            className="inline-flex items-center gap-1 text-[10px] font-bold text-terracotta-600 bg-terracotta-50 px-1.5 py-0.2 rounded border border-terracotta-200"
+                            title="已置顶的常用房间"
+                          >
+                            <Pin className="w-2.5 h-2.5 -rotate-45 fill-current" />
+                            <span>置顶</span>
+                          </span>
+                        )}
                         <span className="font-mono font-bold text-sm text-ink-text tracking-wide">
                           {r.code}
                         </span>
@@ -487,6 +517,24 @@ export default function HomePage() {
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
+                      {/* 置顶/取消置顶按钮 */}
+                      <button
+                        type="button"
+                        onClick={() => handleTogglePin(r.code)}
+                        className={`p-1.5 rounded-game-sm transition ${
+                          r.isPinned
+                            ? 'text-terracotta-600 bg-terracotta-50 hover:bg-terracotta-100'
+                            : 'text-ink-subtle hover:text-ink-text hover:bg-warm-bg'
+                        }`}
+                        title={r.isPinned ? '取消置顶房间' : '置顶此常用房间'}
+                      >
+                        <Pin
+                          className={`w-3.5 h-3.5 -rotate-45 transition ${
+                            r.isPinned ? 'fill-current text-terracotta-600' : ''
+                          }`}
+                        />
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => handleResumeRoom(r.code)}

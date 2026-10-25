@@ -13,15 +13,29 @@ interface UseVoiceCallProps {
   hasGuest?: boolean;
 }
 
-// 采用国内高可用 STUN 节点（腾讯、小米、B站、Cloudflare）与 Google 节点作为多重备份
+// 采用国内高可用 STUN 节点 + 全球免注册高可用 TURN 中继节点（彻底解决 4G/5G 对称 NAT 与 VPN 局限）
 const RTC_CONFIG: RTCConfiguration = {
   iceServers: [
+    // 1. 国内权威 STUN 节点
     { urls: 'stun:stun.qq.com:3478' },
     { urls: 'stun:stun.miwifi.com:3478' },
     { urls: 'stun:stun.chat.bilibili.com:3478' },
+    // 2. 国际主流 STUN 节点
     { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:stun.sipgate.net:3478' },
     { urls: 'stun:stun.l.google.com:19302' },
+    // 3. 全球高可用公用 TURN 中继节点（关键：穿透对称型 NAT、蜂窝 4G/5G 与 VPN）
+    // 提供标准 UDP 中继，以及经由 80 和 443 端口的 TCP/TLS 中继（不受 VPN/防火墙阻拦）
+    {
+      urls: [
+        'turn:openrelay.metered.ca:80',
+        'turn:openrelay.metered.ca:443',
+        'turn:openrelay.metered.ca:443?transport=tcp',
+        'turns:openrelay.metered.ca:443?transport=tcp',
+      ],
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
   ],
   iceCandidatePoolSize: 10,
 };
@@ -195,12 +209,20 @@ export function useVoiceCall({
       };
 
       // 部分移动端（如某些版本 iOS Safari/微信）优先触发 iceConnectionStateChange
+      let restartAttempted = false;
       pc.oniceconnectionstatechange = () => {
         if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
           handleConnectionSuccess();
         } else if (pc.iceConnectionState === 'failed') {
-          setErrorMsg('P2P 语音直连受限，建议同一 Wi-Fi 或在聊天室打字交流');
-          cleanupCall();
+          // 首次直连失败时，自动尝试通过全球 TURN 中继进行 ICE Restart
+          if (!restartAttempted && typeof pc.restartIce === 'function') {
+            restartAttempted = true;
+            console.log('ICE connection failed, restarting ICE with TURN relays...');
+            pc.restartIce();
+          } else {
+            setErrorMsg('语音直连握手受限（VPN代理或蜂窝网络阻断了直连），可在聊天室发送语音条或打字');
+            cleanupCall();
+          }
         }
       };
 

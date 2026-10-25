@@ -6,6 +6,7 @@ export interface RecentRoomItem {
   roundNumber: number;
   status: 'waiting_player' | 'in_game' | 'ended';
   updatedAt: number;
+  isPinned?: boolean; // 是否置顶常用房间
 }
 
 export interface UserPreferences {
@@ -59,7 +60,12 @@ export function saveRecentRoom(item: RecentRoomItem) {
     const existingIndex = list.findIndex((r) => r.code.toUpperCase() === item.code.toUpperCase());
 
     if (existingIndex >= 0) {
-      list[existingIndex] = { ...list[existingIndex], ...item, updatedAt: Date.now() };
+      list[existingIndex] = {
+        ...list[existingIndex],
+        ...item,
+        isPinned: list[existingIndex].isPinned ?? item.isPinned,
+        updatedAt: Date.now(),
+      };
     } else {
       list.unshift({ ...item, updatedAt: Date.now() });
     }
@@ -77,10 +83,49 @@ export function getRecentRooms(): RecentRoomItem[] {
   try {
     const raw = localStorage.getItem(RECENT_ROOMS_KEY);
     if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed: RecentRoomItem[] = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    // 置顶房间优先排在前面，同级别按 updatedAt 降序
+    return parsed.sort((a, b) => {
+      if (Boolean(a.isPinned) !== Boolean(b.isPinned)) {
+        return a.isPinned ? -1 : 1;
+      }
+      return (b.updatedAt || 0) - (a.updatedAt || 0);
+    });
   } catch (e) {
     return [];
+  }
+}
+
+export function togglePinRoom(code: string): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const uppercaseCode = code.toUpperCase();
+    const raw = localStorage.getItem(RECENT_ROOMS_KEY);
+    if (!raw) return false;
+    const list: RecentRoomItem[] = JSON.parse(raw);
+    if (!Array.isArray(list)) return false;
+
+    const target = list.find((r) => r.code.toUpperCase() === uppercaseCode);
+    if (!target) return false;
+
+    target.isPinned = !target.isPinned;
+    localStorage.setItem(RECENT_ROOMS_KEY, JSON.stringify(list));
+    return Boolean(target.isPinned);
+  } catch (e) {
+    return false;
+  }
+}
+
+export function isRoomPinned(code: string): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    const list = getRecentRooms();
+    const target = list.find((r) => r.code.toUpperCase() === code.toUpperCase());
+    return Boolean(target?.isPinned);
+  } catch (e) {
+    return false;
   }
 }
 

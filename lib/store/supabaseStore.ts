@@ -778,7 +778,7 @@ export class SupabaseRoomStore implements IRoomStore {
       id: crypto.randomUUID(),
       sender_id: playerToken,
       sender_nickname: senderNick,
-      text: text.trim().slice(0, 100),
+      text: text.startsWith('[VOICE:') ? text.trim().slice(0, 100000) : text.trim().slice(0, 200),
       created_at: new Date().toISOString(),
     };
 
