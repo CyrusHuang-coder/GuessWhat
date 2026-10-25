@@ -1,9 +1,9 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { GameStateDTO, WordItem } from '@/lib/types/game';
 import { getRandomWordsByFilter } from '@/lib/data/wordBank';
-import { KeyRound, Dices, ShieldAlert, Check, Sparkles, RefreshCw, Loader2 } from 'lucide-react';
+import { KeyRound, Dices, ShieldAlert, Check, Sparkles, RefreshCw, Loader2, Undo2 } from 'lucide-react';
 import { VoiceInputButton } from './VoiceInputButton';
 
 interface Props {
@@ -24,25 +24,35 @@ export function WordSelectionModal({ state, roomCode, playerToken }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 候选词条列表与 AI 状态
+  // 候选词条列表与已展示排重池
   const [candidates, setCandidates] = useState<WordItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [isAIGenerated, setIsAIGenerated] = useState(false);
+  const seenWordsRef = useRef<Set<string>>(new Set());
+  const [reverting, setReverting] = useState(false);
 
-  // 首次或主题改变时装载初始候选词（从扩充词库随机乱序 9 个）
+  // 首次或主题改变时装载初始候选词（优先保留已有候选，避免刷新重写）
   useEffect(() => {
     if (session?.theme) {
-      const initial = getRandomWordsByFilter(session.theme, session.difficulty, 9);
-      setCandidates(initial);
+      setCandidates((prev) => {
+        if (prev.length > 0 && prev[0].theme === session.theme) {
+          return prev;
+        }
+        const initial = getRandomWordsByFilter(session.theme || undefined, session.difficulty, 9);
+        initial.forEach((w) => seenWordsRef.current.add(w.name));
+        return initial;
+      });
       setIsAIGenerated(false);
     }
   }, [session?.theme, session?.difficulty]);
 
-  // 换一批：优先由 AI 动态生成，若 AI 未配置或异常则从丰富词库重新洗牌抽选
+  // 换一批：优先由 AI 动态生成并注入已展示排除池，失败优雅回退
   const handleRefreshWords = useCallback(async () => {
     if (!session || refreshing) return;
     setRefreshing(true);
     setError(null);
+
+    const excludeList = Array.from(seenWordsRef.current);
 
     try {
       const res = await fetch(`/api/rooms/${roomCode}/ai-words`, {
@@ -51,20 +61,24 @@ export function WordSelectionModal({ state, roomCode, playerToken }: Props) {
           'Content-Type': 'application/json',
           'x-player-token': playerToken,
         },
+        body: JSON.stringify({ excludeWords: excludeList }),
       });
       const data = await res.json();
       if (data.success && Array.isArray(data.words) && data.words.length > 0) {
+        data.words.forEach((w: WordItem) => seenWordsRef.current.add(w.name));
         setCandidates(data.words);
         setIsAIGenerated(Boolean(data.isAI));
       } else {
         // 优雅降级本地抽取
-        const localWords = getRandomWordsByFilter(session.theme || undefined, session.difficulty, 9);
+        const localWords = getRandomWordsByFilter(session.theme || undefined, session.difficulty, 9, excludeList);
+        localWords.forEach((w) => seenWordsRef.current.add(w.name));
         setCandidates(localWords);
         setIsAIGenerated(false);
       }
-    } catch (err) {
+    } catch (err: any) {
       // 容错降级
-      const localWords = getRandomWordsByFilter(session.theme || undefined, session.difficulty, 9);
+      const localWords = getRandomWordsByFilter(session.theme || undefined, session.difficulty, 9, excludeList);
+      localWords.forEach((w) => seenWordsRef.current.add(w.name));
       setCandidates(localWords);
       setIsAIGenerated(false);
     } finally {
@@ -78,6 +92,27 @@ export function WordSelectionModal({ state, roomCode, playerToken }: Props) {
     setSelectedWord(random.name);
     setSelectedNote(random.note || '');
     setIsCustom(false);
+  };
+
+  // 猜词人撤回并重新选择主题
+  const handleRevertTheme = async () => {
+    if (reverting) return;
+    setReverting(true);
+    try {
+      const res = await fetch(`/api/rooms/${roomCode}/settings/revert`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-player-token': playerToken,
+        },
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+    } catch (err: any) {
+      alert(`重选主题失败: ${err.message}`);
+    } finally {
+      setReverting(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -135,14 +170,26 @@ export function WordSelectionModal({ state, roomCode, playerToken }: Props) {
 
   if (!isMaster) {
     return (
-      <div className="bg-white rounded-game border border-warm-border p-8 text-center max-w-md mx-auto my-12 shadow-board">
-        <div className="w-12 h-12 rounded-full bg-sage-100 text-sage-600 flex items-center justify-center mx-auto mb-4 animate-bounce">
+      <div className="bg-white rounded-game border border-warm-border p-6 sm:p-8 text-center max-w-md mx-auto my-12 shadow-board space-y-4 animate-in fade-in zoom-in-95 duration-150">
+        <div className="w-12 h-12 rounded-full bg-sage-100 text-sage-600 flex items-center justify-center mx-auto mb-2 animate-bounce">
           <KeyRound className="w-6 h-6" />
         </div>
-        <h3 className="text-lg font-bold text-ink-text mb-2">出题人正在选择秘密词条</h3>
-        <p className="text-sm text-ink-muted leading-relaxed">
-          出题人正在根据你选定的主题【<strong className="text-ink-text">{session?.theme}</strong>】挑选或由 AI 灵感推荐秘密答案。设词完成后对局即刻开始！
+        <h3 className="text-lg font-bold text-ink-text">等待出题人设定秘密词条</h3>
+        <p className="text-xs text-ink-muted leading-relaxed">
+          当前已选主题【<strong className="text-ink-text">{session?.theme}</strong>】。在出题人正式开始前，您可以随时重选。
         </p>
+
+        <div className="pt-2">
+          <button
+            type="button"
+            onClick={handleRevertTheme}
+            disabled={reverting}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-warm-bg hover:bg-warm-subtle text-ink-text text-xs font-semibold rounded-game-sm border border-warm-border transition shadow-2xs"
+          >
+            <Undo2 className="w-3.5 h-3.5 text-sage-600" />
+            <span>{reverting ? '正在撤回...' : '重新选择主题与规则'}</span>
+          </button>
+        </div>
       </div>
     );
   }

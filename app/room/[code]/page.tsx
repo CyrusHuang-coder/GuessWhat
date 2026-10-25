@@ -13,6 +13,7 @@ import { GuesserSidebar } from '@/components/GuesserSidebar';
 import { MasterSidebar } from '@/components/MasterSidebar';
 import { SettlementModal } from '@/components/SettlementModal';
 import { Copy, Check, Users, Loader2, UserPlus } from 'lucide-react';
+import { getPlayerToken, savePlayerToken, saveRecentRoom } from '@/lib/store/localHistory';
 
 interface PageProps {
   params: Promise<{ code: string }>;
@@ -68,18 +69,34 @@ export default function RoomPage({ params }: PageProps) {
     }
   }, [code, playerToken]);
 
-  // 初始化 Token 并拉取首次状态
+  // 初始化 Token 并拉取首次状态 (同时读取 localStorage 保证跨标签/重开链接不丢身份)
   useEffect(() => {
-    const savedToken = sessionStorage.getItem(`gw_token_${code}`) || '';
+    const savedToken = getPlayerToken(code);
     setPlayerToken(savedToken);
 
     fetchState(savedToken).then((state) => {
       setLoading(false);
-      if (state && !savedToken) {
-        if (!state.room.guest_player_id) {
-          setNeedsJoin(true);
+      if (state) {
+        if (savedToken) {
+          const isHost = savedToken === state.room.host_player_id;
+          const isGuest = savedToken === state.room.guest_player_id;
+          if (isHost || isGuest) {
+            saveRecentRoom({
+              code: state.room.code,
+              myNickname: isHost ? state.room.host_nickname : (state.room.guest_nickname || '猜词伙伴'),
+              opponentNickname: isHost ? state.room.guest_nickname : state.room.host_nickname,
+              role: isHost ? 'host' : 'guest',
+              roundNumber: state.session?.round_number ?? 1,
+              status: state.room.status,
+              updatedAt: Date.now(),
+            });
+          }
         } else {
-          setError('该房间已有两名实际玩家，已满员');
+          if (!state.room.guest_player_id) {
+            setNeedsJoin(true);
+          } else {
+            setError('该房间当前已有两名玩家正在进行对局。如果您是该房间玩家，请在原浏览器中继续游玩。');
+          }
         }
       }
     });
@@ -167,20 +184,32 @@ export default function RoomPage({ params }: PageProps) {
     setJoining(true);
     setError(null);
 
+    const finalNick = joinNickname.trim() || '猜词伙伴';
+
     try {
       const res = await fetch(`/api/rooms/${code}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guestNickname: joinNickname.trim() || '猜词伙伴' }),
+        body: JSON.stringify({ guestNickname: finalNick }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
-      sessionStorage.setItem(`gw_token_${code}`, data.playerToken);
-      sessionStorage.setItem(`gw_nick_${code}`, joinNickname.trim() || '猜词伙伴');
+      savePlayerToken(code, data.playerToken, finalNick);
       setPlayerToken(data.playerToken);
       setNeedsJoin(false);
-      await fetchState(data.playerToken);
+      const state = await fetchState(data.playerToken);
+      if (state) {
+        saveRecentRoom({
+          code: state.room.code,
+          myNickname: finalNick,
+          opponentNickname: state.room.host_nickname,
+          role: 'guest',
+          roundNumber: state.session?.round_number ?? 1,
+          status: state.room.status,
+          updatedAt: Date.now(),
+        });
+      }
     } catch (err: any) {
       setError(err.message || '加入房间失败');
     } finally {

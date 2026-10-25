@@ -30,6 +30,8 @@ export interface IRoomStore {
     }
   ): Promise<GameSession>;
 
+  revertToSettingSelection(code: string, playerToken: string): Promise<GameSession>;
+
   setWord(
     code: string,
     playerToken: string,

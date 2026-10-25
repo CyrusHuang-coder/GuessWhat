@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { GameStateDTO } from '@/lib/types/game';
-import { Copy, Check, AlertTriangle, ArrowLeft, Smartphone } from 'lucide-react';
+import { Copy, Check, AlertTriangle, ArrowLeft, Smartphone, HelpCircle, X, ShieldCheck, Zap, Sparkles } from 'lucide-react';
 import { EngineBadge } from './EngineBadge';
 import { SurfaceLogo } from './SurfaceLogo';
 import { InstallPwaModal } from './InstallPwaModal';
@@ -16,6 +16,7 @@ export function RoomHeader({ state }: Props) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
+  const [showRulesModal, setShowRulesModal] = useState(false);
   const { room, session, isHost, opponentOnline } = state;
 
   // 计算双方历史大比分
@@ -184,6 +185,14 @@ export function RoomHeader({ state }: Props) {
             <Smartphone className="w-3.5 h-3.5" />
           </button>
 
+          <button
+            onClick={() => setShowRulesModal(true)}
+            className="p-1.5 rounded-game-sm bg-warm-subtle hover:bg-warm-border text-ink-muted hover:text-ink-text border border-warm-border transition"
+            title="查看游戏规则说明"
+          >
+            <HelpCircle className="w-3.5 h-3.5" />
+          </button>
+
           <EngineBadge />
         </div>
       </div>
@@ -192,6 +201,60 @@ export function RoomHeader({ state }: Props) {
         isOpen={showInstallModal}
         onClose={() => setShowInstallModal(false)}
       />
+
+      {/* 规则说明弹窗 */}
+      {showRulesModal && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-game border border-warm-border max-w-sm w-full p-5 shadow-board relative animate-in fade-in zoom-in-95 duration-150 space-y-3">
+            <button
+              onClick={() => setShowRulesModal(false)}
+              className="absolute top-4 right-4 p-1 text-ink-muted hover:text-ink-text rounded hover:bg-warm-bg transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-game-sm bg-sage-100 text-sage-600 flex items-center justify-center">
+                <HelpCircle className="w-4 h-4" />
+              </div>
+              <h3 className="font-bold text-ink-text text-sm">猜词游戏玩法指南</h3>
+            </div>
+
+            <div className="space-y-2.5 text-xs text-ink-text pt-1">
+              <div className="p-2.5 bg-warm-bg rounded-game-sm border border-warm-border">
+                <div className="font-bold text-sage-800 mb-0.5">二十问是非推理</div>
+                <p className="text-ink-muted leading-relaxed">
+                  猜词人提出能用“是 / 不是 / 不确定”回答的问题逐步缩小范围，收窄到具体目标后发起正式猜词。
+                </p>
+              </div>
+
+              <div className="p-2.5 bg-warm-bg rounded-game-sm border border-warm-border">
+                <div className="font-bold text-terracotta-700 mb-0.5">线索提示交易</div>
+                <p className="text-ink-muted leading-relaxed">
+                  猜词人遇到卡点时，可消耗 1、3 或 5 次提问机会申请出题人专属线索，出题人答复后提问次数相应累加。
+                </p>
+              </div>
+
+              <div className="p-2.5 bg-warm-bg rounded-game-sm border border-warm-border">
+                <div className="font-bold text-sage-800 mb-0.5">服务端绝对防剧透</div>
+                <p className="text-ink-muted leading-relaxed">
+                  秘密答案在猜中揭晓前绝不下发给猜词人，也不输入给 AI 偏航预警模型，确保绝对公正。
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setShowRulesModal(false)}
+                className="w-full py-2 bg-sage-500 hover:bg-sage-600 text-white font-bold text-xs rounded-game-sm transition"
+              >
+                我知道了
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }

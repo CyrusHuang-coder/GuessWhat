@@ -250,9 +250,23 @@ export function getWordsByFilter(theme?: string, difficulty?: string): WordItem[
 export function getRandomWordsByFilter(
   theme?: string,
   difficulty?: string,
-  count: number = 9
+  count: number = 9,
+  excludeWords?: string[]
 ): WordItem[] {
   let matched = getWordsByFilter(theme, difficulty);
+
+  // 排除近期已展示过的词条，保证主动换一批时内容持续更新
+  if (excludeWords && excludeWords.length > 0) {
+    const excludeSet = new Set(excludeWords);
+    const nonExcluded = matched.filter((item) => !excludeSet.has(item.name));
+    if (nonExcluded.length >= count) {
+      matched = nonExcluded;
+    } else if (nonExcluded.length > 0) {
+      // 优先放入未排除的词条，剩余不足部分再从其它项补充
+      const remaining = matched.filter((item) => excludeSet.has(item.name));
+      matched = [...nonExcluded, ...remaining];
+    }
+  }
 
   // 如果当前难度匹配的词条不够，补充该主题下其他难度的词条
   if (matched.length < count && theme && theme !== '自定义主题') {

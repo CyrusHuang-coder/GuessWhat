@@ -275,6 +275,24 @@ export class KvRoomStore implements IRoomStore {
     return { ...data.session };
   }
 
+  async revertToSettingSelection(code: string, playerToken: string): Promise<GameSession> {
+    const data = await this.getStored(code);
+    if (!data || !data.session) throw new Error('对局未初始化');
+
+    if (data.session.guesser_id !== playerToken) {
+      throw new Error('只有猜词人可以重新选择主题');
+    }
+    if (data.session.status !== 'word_selection') {
+      throw new Error('出题人已选定词条或游戏已进入后续阶段，无法直接回退');
+    }
+
+    data.session.status = 'setting_selection';
+    data.session.theme = null;
+    await this.saveStored(code, data);
+    realtimeBroadcaster.notify(code.toUpperCase(), 'SETTINGS_RESET');
+    return { ...data.session };
+  }
+
   async setWord(
     code: string,
     playerToken: string,

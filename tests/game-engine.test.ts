@@ -316,5 +316,55 @@ describe('游戏状态机与规则核心流程测试', () => {
     expect(state?.room.status).toBe('in_game');
     expect(state?.session?.round_number).toBe(3);
   });
+
+  it('主题反悔机制测试：出题人选词阶段允许猜词人撤回重设，非猜词人或已开局阶段禁止撤回', async () => {
+    const { room, playerToken: hostToken } = await store.createRoom('出题人');
+    const { playerToken: guestToken } = await store.joinRoom(room.code, '猜词人');
+
+    // 猜词人提交初始主题
+    await store.saveSettings(room.code, guestToken, {
+      theme: '水果',
+      difficulty: 'easy',
+      mode: 'normal',
+    });
+
+    let state = await store.getRoomState(room.code, guestToken);
+    expect(state?.session?.status).toBe('word_selection');
+    expect(state?.session?.theme).toBe('水果');
+
+    // 非猜词人（出题人）尝试撤回 -> 应被拒绝
+    await expect(store.revertToSettingSelection(room.code, hostToken)).rejects.toThrow(
+      '只有猜词人可以重新选择主题'
+    );
+
+    // 猜词人主动反悔撤回 -> 成功回退至 setting_selection
+    const revertedSession = await store.revertToSettingSelection(room.code, guestToken);
+    expect(revertedSession.status).toBe('setting_selection');
+    expect(revertedSession.theme).toBeNull();
+
+    // 再次拉取验证
+    state = await store.getRoomState(room.code, hostToken);
+    expect(state?.session?.status).toBe('setting_selection');
+
+    // 猜词人重新提交新主题
+    await store.saveSettings(room.code, guestToken, {
+      theme: '职业',
+      difficulty: 'medium',
+      mode: 'normal',
+    });
+    state = await store.getRoomState(room.code, guestToken);
+    expect(state?.session?.status).toBe('word_selection');
+    expect(state?.session?.theme).toBe('职业');
+
+    // 出题人设定词条，进入正式 playing 阶段
+    await store.setWord(room.code, hostToken, { word: '调香师' });
+    state = await store.getRoomState(room.code, guestToken);
+    expect(state?.session?.status).toBe('playing');
+
+    // 已进入正式阶段后，撤回操作应被拦截
+    await expect(store.revertToSettingSelection(room.code, guestToken)).rejects.toThrow(
+      '无法直接回退'
+    );
+  });
 });
 

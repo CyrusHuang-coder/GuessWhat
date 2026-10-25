@@ -1,24 +1,83 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { EngineBadge } from '@/components/EngineBadge';
 import { SurfaceLogo } from '@/components/SurfaceLogo';
-import { Sparkles, Users, ArrowRight, ShieldCheck, Zap, HelpCircle, Smartphone } from 'lucide-react';
+import {
+  Sparkles,
+  Users,
+  ArrowRight,
+  ShieldCheck,
+  Zap,
+  HelpCircle,
+  Smartphone,
+  History,
+  Settings,
+  Gamepad2,
+  Trash2,
+  Play,
+  RotateCcw,
+  Check,
+} from 'lucide-react';
 import { InstallPwaModal } from '@/components/InstallPwaModal';
+import {
+  getRecentRooms,
+  removeRecentRoom,
+  savePlayerToken,
+  getUserPreferences,
+  saveUserPreferences,
+  RecentRoomItem,
+  UserPreferences,
+} from '@/lib/store/localHistory';
+
+type MainTab = 'play' | 'history' | 'prefs' | 'rules';
+
+function timeAgo(timestamp: number): string {
+  const diffSec = Math.floor((Date.now() - timestamp) / 1000);
+  if (diffSec < 60) return '刚刚';
+  const diffMin = Math.floor(diffSec / 60);
+  if (diffMin < 60) return `${diffMin} 分钟前`;
+  const diffHour = Math.floor(diffMin / 60);
+  if (diffHour < 24) return `${diffHour} 小时前`;
+  const diffDay = Math.floor(diffHour / 24);
+  return `${diffDay} 天前`;
+}
 
 export default function HomePage() {
   const router = useRouter();
 
+  const [activeTab, setActiveTab] = useState<MainTab>('play');
+  const [recentRooms, setRecentRooms] = useState<RecentRoomItem[]>([]);
+  const [prefs, setPrefs] = useState<UserPreferences>({
+    defaultNickname: '',
+    autoCopyInviteLink: true,
+    hapticFeedback: true,
+  });
+
+  // 创建房间表单
   const [createNickname, setCreateNickname] = useState('');
   const [creating, setCreating] = useState(false);
 
+  // 加入房间表单
   const [joinCode, setJoinCode] = useState('');
   const [joinNickname, setJoinNickname] = useState('');
   const [joining, setJoining] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+  const [savedSuccess, setSavedSuccess] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
+
+  // 加载本地历史与偏好
+  useEffect(() => {
+    const loadedPrefs = getUserPreferences();
+    setPrefs(loadedPrefs);
+    if (loadedPrefs.defaultNickname) {
+      setCreateNickname(loadedPrefs.defaultNickname);
+      setJoinNickname(loadedPrefs.defaultNickname);
+    }
+    setRecentRooms(getRecentRooms());
+  }, []);
 
   // 创建房间
   const handleCreateRoom = async (e: React.FormEvent) => {
@@ -27,19 +86,18 @@ export default function HomePage() {
     setCreating(true);
     setError(null);
 
+    const finalNick = createNickname.trim() || prefs.defaultNickname || '出题房主';
+
     try {
       const res = await fetch('/api/rooms', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hostNickname: createNickname.trim() || '出题房主' }),
+        body: JSON.stringify({ hostNickname: finalNick }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
-      // 将 playerToken 存入 sessionStorage
-      sessionStorage.setItem(`gw_token_${data.roomCode}`, data.playerToken);
-      sessionStorage.setItem(`gw_nick_${data.roomCode}`, createNickname.trim() || '出题房主');
-
+      savePlayerToken(data.roomCode, data.playerToken, finalNick);
       router.push(`/room/${data.roomCode}`);
     } catch (err: any) {
       setError(err.message || '创建房间失败');
@@ -55,19 +113,18 @@ export default function HomePage() {
     setError(null);
 
     const code = joinCode.trim().toUpperCase();
+    const finalNick = joinNickname.trim() || prefs.defaultNickname || '猜词伙伴';
 
     try {
       const res = await fetch(`/api/rooms/${code}/join`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ guestNickname: joinNickname.trim() || '猜词伙伴' }),
+        body: JSON.stringify({ guestNickname: finalNick }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error);
 
-      sessionStorage.setItem(`gw_token_${code}`, data.playerToken);
-      sessionStorage.setItem(`gw_nick_${code}`, joinNickname.trim() || '猜词伙伴');
-
+      savePlayerToken(code, data.playerToken, finalNick);
       router.push(`/room/${code}`);
     } catch (err: any) {
       setError(err.message || '加入房间失败');
@@ -75,176 +132,458 @@ export default function HomePage() {
     }
   };
 
+  // 恢复历史房间
+  const handleResumeRoom = (code: string) => {
+    router.push(`/room/${code.toUpperCase()}`);
+  };
+
+  // 删除历史房间记录
+  const handleDeleteHistory = (code: string) => {
+    if (window.confirm(`确定从本机历史中移除房间 ${code} 吗？`)) {
+      removeRecentRoom(code);
+      setRecentRooms(getRecentRooms());
+    }
+  };
+
+  // 保存偏好设置
+  const handleSavePreferences = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveUserPreferences(prefs);
+    setSavedSuccess(true);
+    setTimeout(() => setSavedSuccess(false), 2000);
+  };
+
+  const activeRecent = recentRooms.find((r) => r.status !== 'ended') || recentRooms[0];
+
   return (
-    <main className="min-h-screen bg-warm-bg flex flex-col items-center justify-between p-4 sm:p-8">
-      {/* 顶部指示条 */}
-      <div className="w-full max-w-4xl flex items-center justify-between pb-6">
+    <main className="min-h-screen bg-warm-bg flex flex-col justify-between p-4 sm:p-8">
+      {/* 顶部主导航栏 */}
+      <header className="w-full max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 pb-6 border-b border-warm-border/60">
         <SurfaceLogo size="md" showText={true} />
-        <EngineBadge />
-      </div>
 
-      {/* 核心主视觉与操作卡片 */}
-      <div className="w-full max-w-4xl space-y-8 my-auto">
-        <div className="text-center space-y-3">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-sage-100 border border-sage-200 text-sage-800 text-xs font-bold">
-            <Sparkles className="w-3.5 h-3.5 text-sage-600" />
-            <span>双人实时在线猜词 · 经典二十问是非推理</span>
-          </div>
-          <h1 className="text-3xl sm:text-5xl font-black text-ink-text tracking-tight">
-            在「是」与「否」的边缘，推理隐秘的真相
-          </h1>
-          <p className="text-sm sm:text-base text-ink-muted max-w-xl mx-auto leading-relaxed">
-            一名玩家设定秘密答案，另一名玩家通过连续提出只能用「是」「不是」「不确定」回答的问题逐步缩小范围。
-          </p>
+        <div className="flex items-center gap-1.5 bg-warm-subtle/80 p-1 rounded-game-sm border border-warm-border">
+          <button
+            type="button"
+            onClick={() => setActiveTab('play')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition ${
+              activeTab === 'play'
+                ? 'bg-white shadow-2xs text-sage-700'
+                : 'text-ink-muted hover:text-ink-text'
+            }`}
+          >
+            <Gamepad2 className="w-3.5 h-3.5" />
+            <span>游戏</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition relative ${
+              activeTab === 'history'
+                ? 'bg-white shadow-2xs text-sage-700'
+                : 'text-ink-muted hover:text-ink-text'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>历史</span>
+            {recentRooms.length > 0 && (
+              <span className="w-4 h-4 rounded-full bg-sage-500 text-white text-[10px] flex items-center justify-center font-mono">
+                {recentRooms.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('prefs')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition ${
+              activeTab === 'prefs'
+                ? 'bg-white shadow-2xs text-sage-700'
+                : 'text-ink-muted hover:text-ink-text'
+            }`}
+          >
+            <Settings className="w-3.5 h-3.5" />
+            <span>偏好</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('rules')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition ${
+              activeTab === 'rules'
+                ? 'bg-white shadow-2xs text-sage-700'
+                : 'text-ink-muted hover:text-ink-text'
+            }`}
+          >
+            <HelpCircle className="w-3.5 h-3.5" />
+            <span>规则</span>
+          </button>
+
+          <div className="h-4 w-px bg-warm-border mx-0.5" />
+          <EngineBadge />
         </div>
+      </header>
 
+      {/* 主体内容区 */}
+      <div className="w-full max-w-4xl mx-auto my-auto py-6 space-y-6">
         {error && (
-          <div className="max-w-md mx-auto p-3 bg-status-errBg text-status-err text-xs rounded-game-sm border border-status-errBorder text-center font-medium">
+          <div className="max-w-md mx-auto p-3 bg-status-errBg text-status-err text-xs rounded-game-sm border border-status-errBorder text-center font-medium animate-in fade-in">
             {error}
           </div>
         )}
 
-        {/* 双入口卡片 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-          {/* 创建房间 */}
-          <div className="bg-white p-6 sm:p-8 rounded-game border border-warm-border shadow-board hover:shadow-board-hover transition">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-game-sm bg-sage-100 text-sage-700 flex items-center justify-center">
-                <Users className="w-5 h-5" />
+        {/* ============================================================== */}
+        {/* TAB 1: 开始与继续游戏 */}
+        {/* ============================================================== */}
+        {activeTab === 'play' && (
+          <div className="space-y-6 animate-in fade-in duration-150">
+            {/* 极简 Slogan */}
+            <div className="text-center space-y-2">
+              <h1 className="text-2xl sm:text-4xl font-black text-ink-text tracking-tight">
+                在「是」与「否」的边缘，推演未知真相
+              </h1>
+              <p className="text-xs sm:text-sm text-ink-muted max-w-md mx-auto">
+                出题人掌控秘密，猜词人通过二分问答步步逼近核心答案。
+              </p>
+            </div>
+
+            {/* 可恢复房间：如果存在活跃历史房间，顶部醒目展示一键继续卡片 */}
+            {activeRecent && (
+              <div className="bg-sage-50 border border-sage-200 rounded-game p-4 sm:p-5 max-w-2xl mx-auto shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="space-y-1 text-center sm:text-left">
+                  <div className="flex items-center justify-center sm:justify-start gap-2">
+                    <span className="w-2 h-2 rounded-full bg-sage-500 animate-pulse" />
+                    <span className="text-xs font-bold text-sage-900">检测到正在进行的对局</span>
+                    <span className="text-[10px] font-mono bg-sage-100 text-sage-700 px-1.5 py-0.2 rounded border border-sage-200">
+                      {activeRecent.code}
+                    </span>
+                  </div>
+                  <p className="text-xs text-sage-700">
+                    您与 <strong>{activeRecent.opponentNickname || '伙伴'}</strong> 的对局 (第 {activeRecent.roundNumber} 局 · {timeAgo(activeRecent.updatedAt)})
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleResumeRoom(activeRecent.code)}
+                  className="px-5 py-2.5 bg-sage-500 hover:bg-sage-600 active:bg-sage-700 text-white font-bold text-xs rounded-game-sm shadow-2xs transition flex items-center gap-1.5 shrink-0"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>恢复进入房间</span>
+                </button>
               </div>
-              <div>
-                <h2 className="text-lg font-bold text-ink-text">创建新房间</h2>
-                <p className="text-xs text-ink-muted">生成房间码与链接，邀请好友即刻联机</p>
+            )}
+
+            {/* 双入口卡片 */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-2xl mx-auto">
+              {/* 创建房间 */}
+              <div className="bg-white p-6 rounded-game border border-warm-border shadow-board space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-game-sm bg-sage-100 text-sage-700 flex items-center justify-center shrink-0">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-ink-text">创建新房间</h2>
+                    <p className="text-xs text-ink-muted">发起对局并生成专属邀请链接</p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleCreateRoom} className="space-y-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-medium text-ink-muted mb-1">
+                      您的昵称（首局担任出题人）
+                    </label>
+                    <input
+                      type="text"
+                      value={createNickname}
+                      onChange={(e) => setCreateNickname(e.target.value)}
+                      placeholder={prefs.defaultNickname || '例如：福尔摩斯'}
+                      maxLength={15}
+                      className="w-full px-3.5 py-2 text-xs border border-warm-border rounded-game-sm bg-warm-bg/50 focus:outline-none focus:ring-2 focus:ring-sage-500 text-ink-text"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={creating}
+                    className="w-full py-2.5 bg-sage-500 hover:bg-sage-600 active:bg-sage-700 disabled:opacity-50 text-white font-bold text-xs rounded-game-sm shadow transition flex items-center justify-center gap-1.5"
+                  >
+                    <span>{creating ? '正在创建...' : '立即创建房间'}</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+              </div>
+
+              {/* 加入房间 */}
+              <div className="bg-white p-6 rounded-game border border-warm-border shadow-board space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-game-sm bg-terracotta-100 text-terracotta-600 flex items-center justify-center shrink-0">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-ink-text">输入房间码</h2>
+                    <p className="text-xs text-ink-muted">加入好友已建好的对局</p>
+                  </div>
+                </div>
+
+                <form onSubmit={handleJoinRoom} className="space-y-3 pt-1">
+                  <div>
+                    <label className="block text-xs font-medium text-ink-muted mb-1">
+                      房间代码（6 位英文数字）
+                    </label>
+                    <input
+                      type="text"
+                      value={joinCode}
+                      onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                      placeholder="例如：7K9X2A"
+                      maxLength={10}
+                      className="w-full px-3.5 py-2 text-xs border border-warm-border rounded-game-sm bg-warm-bg/50 font-mono uppercase focus:outline-none focus:ring-2 focus:ring-terracotta-500 text-ink-text"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-ink-muted mb-1">
+                      您的昵称（首局担任猜词人）
+                    </label>
+                    <input
+                      type="text"
+                      value={joinNickname}
+                      onChange={(e) => setJoinNickname(e.target.value)}
+                      placeholder={prefs.defaultNickname || '例如：华生'}
+                      maxLength={15}
+                      className="w-full px-3.5 py-2 text-xs border border-warm-border rounded-game-sm bg-warm-bg/50 focus:outline-none focus:ring-2 focus:ring-terracotta-500 text-ink-text"
+                    />
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={joining || !joinCode.trim()}
+                    className="w-full py-2.5 bg-terracotta-500 hover:bg-terracotta-600 active:bg-terracotta-700 disabled:opacity-50 text-white font-bold text-xs rounded-game-sm shadow transition flex items-center justify-center gap-1.5"
+                  >
+                    <span>{joining ? '进入中...' : '进入房间'}</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </form>
               </div>
             </div>
 
-            <form onSubmit={handleCreateRoom} className="space-y-4">
+            {/* 手机桌面 App 入口 */}
+            <div className="text-center pt-2">
+              <button
+                type="button"
+                onClick={() => setShowInstallModal(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-white text-ink-muted hover:text-ink-text text-xs border border-warm-border shadow-2xs hover:bg-warm-subtle transition"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-sage-600" />
+                <span>保存到手机桌面 App（iOS & 安卓免商店）</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 2: 历史房间 */}
+        {/* ============================================================== */}
+        {activeTab === 'history' && (
+          <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between">
               <div>
-                <label className="block text-xs font-semibold text-ink-muted mb-1.5">
-                  您的昵称（首局担任出题人）：
+                <h2 className="text-lg font-bold text-ink-text">本机历史房间</h2>
+                <p className="text-xs text-ink-muted">随时无缝重连已建立的房间，双方身份与战绩持续保留</p>
+              </div>
+              <span className="text-xs text-ink-muted font-mono">{recentRooms.length} 个记录</span>
+            </div>
+
+            {recentRooms.length === 0 ? (
+              <div className="p-12 text-center bg-white rounded-game border border-warm-border space-y-3">
+                <History className="w-8 h-8 text-ink-subtle mx-auto" />
+                <p className="text-xs text-ink-muted">暂无历史对局，创建或加入房间后将自动留存。</p>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('play')}
+                  className="px-4 py-2 bg-sage-500 text-white text-xs font-bold rounded-game-sm hover:bg-sage-600 transition"
+                >
+                  去创建第一个房间
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {recentRooms.map((r) => (
+                  <div
+                    key={r.code}
+                    className="p-4 bg-white rounded-game border border-warm-border shadow-2xs flex items-center justify-between gap-3 hover:border-sage-300 transition"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-bold text-sm text-ink-text tracking-wide">
+                          {r.code}
+                        </span>
+                        <span
+                          className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
+                            r.status === 'in_game'
+                              ? 'bg-sage-100 text-sage-700'
+                              : r.status === 'waiting_player'
+                              ? 'bg-amber-100 text-amber-700'
+                              : 'bg-warm-subtle text-ink-muted'
+                          }`}
+                        >
+                          {r.status === 'in_game' ? '对局中' : r.status === 'waiting_player' ? '等待玩家' : '已结算'}
+                        </span>
+                        <span className="text-xs text-ink-subtle">• 第 {r.roundNumber} 局</span>
+                      </div>
+                      <p className="text-xs text-ink-muted">
+                        我 ({r.myNickname}) VS {r.opponentNickname || '等待加入'} • {timeAgo(r.updatedAt)}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleResumeRoom(r.code)}
+                        className="px-3.5 py-1.5 bg-sage-500 hover:bg-sage-600 active:bg-sage-700 text-white font-bold text-xs rounded-game-sm shadow-2xs transition flex items-center gap-1"
+                      >
+                        <Play className="w-3 h-3 fill-current" />
+                        <span>进入</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteHistory(r.code)}
+                        className="p-1.5 text-ink-subtle hover:text-status-err hover:bg-warm-bg rounded-game-sm transition"
+                        title="从本机移除此房间"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 3: 偏好设置 */}
+        {/* ============================================================== */}
+        {activeTab === 'prefs' && (
+          <div className="max-w-md mx-auto bg-white rounded-game border border-warm-border p-6 shadow-board space-y-5 animate-in fade-in duration-150">
+            <div>
+              <h2 className="text-base font-bold text-ink-text">用户偏好设置</h2>
+              <p className="text-xs text-ink-muted">设置将安全保存在本机浏览器中，自动应用于所有对局</p>
+            </div>
+
+            <form onSubmit={handleSavePreferences} className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-ink-muted mb-1">
+                  默认游戏昵称
                 </label>
                 <input
                   type="text"
-                  value={createNickname}
-                  onChange={(e) => setCreateNickname(e.target.value)}
-                  placeholder="例如：出题小霸王、福尔摩斯"
+                  value={prefs.defaultNickname}
+                  onChange={(e) => setPrefs({ ...prefs, defaultNickname: e.target.value })}
+                  placeholder="创建或加入房间时自动填入"
                   maxLength={15}
-                  className="w-full px-4 py-2.5 text-sm border border-warm-border rounded-game-sm bg-warm-bg focus:outline-none focus:ring-2 focus:ring-sage-500 text-ink-text"
+                  className="w-full px-3.5 py-2 text-xs border border-warm-border rounded-game-sm bg-warm-bg/50 focus:outline-none focus:ring-2 focus:ring-sage-500 text-ink-text"
                 />
+              </div>
+
+              <div className="space-y-2.5 pt-1">
+                <label className="flex items-center justify-between text-xs cursor-pointer">
+                  <span className="text-ink-text">自动复制房间邀请链接</span>
+                  <input
+                    type="checkbox"
+                    checked={prefs.autoCopyInviteLink}
+                    onChange={(e) => setPrefs({ ...prefs, autoCopyInviteLink: e.target.checked })}
+                    className="accent-sage-500 w-4 h-4 rounded cursor-pointer"
+                  />
+                </label>
+
+                <label className="flex items-center justify-between text-xs cursor-pointer">
+                  <span className="text-ink-text">按键与语音触感震动反馈</span>
+                  <input
+                    type="checkbox"
+                    checked={prefs.hapticFeedback}
+                    onChange={(e) => setPrefs({ ...prefs, hapticFeedback: e.target.checked })}
+                    className="accent-sage-500 w-4 h-4 rounded cursor-pointer"
+                  />
+                </label>
               </div>
 
               <button
                 type="submit"
-                disabled={creating}
-                className="w-full py-3.5 bg-sage-500 hover:bg-sage-600 active:bg-sage-700 disabled:opacity-50 text-white font-bold text-sm rounded-game-sm shadow transition flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-sage-500 hover:bg-sage-600 active:bg-sage-700 text-white font-bold text-xs rounded-game-sm shadow transition flex items-center justify-center gap-1.5"
               >
-                <span>{creating ? '创建中...' : '立即创建房间'}</span>
-                <ArrowRight className="w-4 h-4" />
+                {savedSuccess ? (
+                  <>
+                    <Check className="w-3.5 h-3.5" />
+                    <span>设置已保存</span>
+                  </>
+                ) : (
+                  <span>保存偏好设置</span>
+                )}
               </button>
             </form>
           </div>
+        )}
 
-          {/* 加入房间 */}
-          <div className="bg-white p-6 sm:p-8 rounded-game border border-warm-border shadow-board hover:shadow-board-hover transition">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-game-sm bg-terracotta-100 text-terracotta-600 flex items-center justify-center">
-                <Zap className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-bold text-ink-text">加入已有房间</h2>
-                <p className="text-xs text-ink-muted">输入好友分享的 6 位房间代码</p>
-              </div>
-            </div>
-
-            <form onSubmit={handleJoinRoom} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-ink-muted mb-1.5">
-                  房间代码（6 位大写英数）：
-                </label>
-                <input
-                  type="text"
-                  value={joinCode}
-                  onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
-                  placeholder="例如：XK8M2Q"
-                  maxLength={10}
-                  className="w-full px-4 py-2.5 text-sm border border-warm-border rounded-game-sm bg-warm-bg font-mono uppercase focus:outline-none focus:ring-2 focus:ring-terracotta-500 text-ink-text"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-ink-muted mb-1.5">
-                  您的昵称（首局担任猜词人）：
-                </label>
-                <input
-                  type="text"
-                  value={joinNickname}
-                  onChange={(e) => setJoinNickname(e.target.value)}
-                  placeholder="例如：推理家小红、华生"
-                  maxLength={15}
-                  className="w-full px-4 py-2.5 text-sm border border-warm-border rounded-game-sm bg-warm-bg focus:outline-none focus:ring-2 focus:ring-terracotta-500 text-ink-text"
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={joining || !joinCode.trim()}
-                className="w-full py-3.5 bg-terracotta-500 hover:bg-terracotta-600 active:bg-terracotta-700 disabled:opacity-50 text-white font-bold text-sm rounded-game-sm shadow transition flex items-center justify-center gap-2"
-              >
-                <span>{joining ? '进入中...' : '进入对局房间'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </form>
-          </div>
-        </div>
-
-        {/* 游戏规则简介特性 */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto pt-2 text-xs">
-          <div className="p-4 bg-white rounded-game border border-warm-border shadow-board flex items-start gap-3">
-            <ShieldCheck className="w-5 h-5 text-sage-600 shrink-0 mt-0.5" />
+        {/* ============================================================== */}
+        {/* TAB 4: 规则说明 */}
+        {/* ============================================================== */}
+        {activeTab === 'rules' && (
+          <div className="max-w-2xl mx-auto space-y-4 animate-in fade-in duration-150">
             <div>
-              <div className="font-bold text-ink-text mb-0.5">严格服务端防剧透</div>
-              <div className="text-ink-muted leading-relaxed">
-                秘密答案在猜中揭晓前绝不下发给猜词人，亦不传给 AI 预警模型。
-              </div>
+              <h2 className="text-lg font-bold text-ink-text">游戏规则与机制说明</h2>
+              <p className="text-xs text-ink-muted">经典二十问（海龟汤）是非推理玩法介绍</p>
             </div>
-          </div>
 
-          <div className="p-4 bg-white rounded-game border border-warm-border shadow-board flex items-start gap-3">
-            <Zap className="w-5 h-5 text-terracotta-600 shrink-0 mt-0.5" />
-            <div>
-              <div className="font-bold text-ink-text mb-0.5">普通与挑战双模式</div>
-              <div className="text-ink-muted leading-relaxed">
-                支持无限问答与自设提问上限，额度耗尽仍能无限次正式猜词。
+            <div className="space-y-3 text-xs">
+              <div className="p-4 bg-white rounded-game border border-warm-border shadow-2xs space-y-1.5">
+                <div className="font-bold text-sage-800 flex items-center gap-1.5">
+                  <HelpCircle className="w-4 h-4 text-sage-600" />
+                  <span>核心推理规则</span>
+                </div>
+                <p className="text-ink-muted leading-relaxed">
+                  出题人设定一个秘密词条，猜词人通过提出一系列是非问题（只能用“是”、“不是”、“不确定”回答）逐步收窄范围。猜词人认为明确时可随时发起正式猜词。
+                </p>
               </div>
-            </div>
-          </div>
 
-          <div className="p-4 bg-white rounded-game border border-warm-border shadow-board flex items-start gap-3">
-            <Sparkles className="w-5 h-5 text-sage-600 shrink-0 mt-0.5" />
-            <div>
-              <div className="font-bold text-ink-text mb-0.5">AI 推荐与偏航预警</div>
-              <div className="text-ink-muted leading-relaxed">
-                仅辅助提问二分策略，绝不代替人工裁定；无 Key 自动平稳降级。
+              <div className="p-4 bg-white rounded-game border border-warm-border shadow-2xs space-y-1.5">
+                <div className="font-bold text-terracotta-700 flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-terracotta-600" />
+                  <span>双模式规则</span>
+                </div>
+                <p className="text-ink-muted leading-relaxed">
+                  <strong>普通模式</strong>：无限次提问，适合轻松闲聊与好友推测；<br />
+                  <strong>挑战模式</strong>：限制提问次数（如 15 次），额度耗尽后仍保留无限次最终猜词机会。
+                </p>
+              </div>
+
+              <div className="p-4 bg-white rounded-game border border-warm-border shadow-2xs space-y-1.5">
+                <div className="font-bold text-sage-800 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-sage-600" />
+                  <span>服务端防剧透保障</span>
+                </div>
+                <p className="text-ink-muted leading-relaxed">
+                  秘密答案在猜中揭晓前绝不下发给猜词人的手机或浏览器，亦不传给 AI 偏航预警模型，保证绝对公正、无作弊空间。
+                </p>
+              </div>
+
+              <div className="p-4 bg-white rounded-game border border-warm-border shadow-2xs space-y-1.5">
+                <div className="font-bold text-ink-text flex items-center gap-1.5">
+                  <Sparkles className="w-4 h-4 text-sage-600" />
+                  <span>AI 智能思维辅助</span>
+                </div>
+                <p className="text-ink-muted leading-relaxed">
+                  猜词人可使用有限额度的 AI 思维助手推荐二分探索方向；出题人可由 AI 查证未知事实，避免因出题人知识盲区导致答错误导。
+                </p>
               </div>
             </div>
           </div>
-        </div>
-        {/* 存为手机桌面 App 按钮 */}
-        <div className="mt-8 text-center">
-          <button
-            type="button"
-            onClick={() => setShowInstallModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-sage-50 hover:bg-sage-100 text-sage-700 text-xs font-semibold border border-sage-200 shadow-2xs transition"
-          >
-            <Smartphone className="w-3.5 h-3.5 text-sage-600" />
-            <span>保存到手机桌面 App（iOS & 安卓免商店）</span>
-          </button>
-        </div>
+        )}
       </div>
 
       {/* 页脚说明 */}
-      <footer className="text-center text-xs text-ink-subtle py-6">
+      <footer className="text-center text-xs text-ink-subtle py-4 border-t border-warm-border/40 max-w-4xl w-full mx-auto">
         GuessWhat · 双人实时在线猜词 · 免注册即开即玩
       </footer>
 

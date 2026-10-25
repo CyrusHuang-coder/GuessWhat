@@ -263,6 +263,30 @@ export class SupabaseRoomStore implements IRoomStore {
     return updated;
   }
 
+  async revertToSettingSelection(code: string, playerToken: string): Promise<GameSession> {
+    const supabase = this.ensureClient();
+    const state = await this.getRoomState(code, playerToken);
+    if (!state?.session) throw new Error('对局未初始化');
+    if (state.session.guesser_id !== playerToken) throw new Error('只有猜词人可以重新选择主题');
+    if (state.session.status !== 'word_selection') {
+      throw new Error('出题人已选定词条或游戏已进入后续阶段，无法直接回退');
+    }
+
+    const { data: updated, error } = await supabase
+      .from('game_sessions')
+      .update({
+        theme: null,
+        status: 'setting_selection',
+      })
+      .eq('id', state.session.id)
+      .select()
+      .single();
+
+    if (error || !updated) throw new Error(error?.message || '重置主题失败');
+    realtimeBroadcaster.notify(code.toUpperCase(), 'SETTINGS_RESET');
+    return updated;
+  }
+
   async setWord(
     code: string,
     playerToken: string,

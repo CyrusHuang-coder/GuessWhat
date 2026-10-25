@@ -469,10 +469,16 @@ export async function generateWordCandidates(params: {
   theme: string;
   difficulty: Difficulty;
   count?: number;
+  excludeWords?: string[];
 }): Promise<AICandidateWord[]> {
   const count = params.count || 9;
+  const excludeText =
+    params.excludeWords && params.excludeWords.length > 0
+      ? `\n6. 排除列表：绝不要生成以下近期已经出现过的词条：${params.excludeWords.slice(-30).join('、')}。`
+      : '';
+
   const systemPrompt = `你是一款双人实时猜词游戏（二十问/海龟汤）的题目设计与词库专家。
-请根据出题人指定的主题和难度，生成一组富有创意、极具猜词二分探索空间且丰富多样的秘密词条。`;
+请根据出题人指定的主题和难度，生成一组富有创意、极具猜词二分探索空间且丰富多样的秘密词条。同一批词条内部绝对不能出现重复同名项。`;
 
   const userPrompt = `【设定参数】
 - 主题: ${params.theme}
@@ -487,7 +493,7 @@ export async function generateWordCandidates(params: {
    - hard(困难): 大胆发掘小众、奇妙、具有专业背景或冷门趣味的真实词汇（例如：职业包括“天气观测员”、“调香师”、“试睡员”、“古籍修复师”；水果包括“姑娘果”、“指橙”；动物包括“兔狲”、“水熊虫”；人物包括“斐波那契”、“哥德尔”等）。
 3. 词条尽量涵盖不同细分领域，不要同质化。
 4. 每个词条附带 10~25 字生动有趣的简短介绍或出题提示 (note)。
-5. 随机与新颖：每次生成请给出不一样的灵感词条组合。
+5. 随机与新颖：每次生成请给出不一样的灵感词条组合。${excludeText}
 
 请严格返回如下 JSON 格式：
 {
@@ -504,11 +510,23 @@ export async function generateWordCandidates(params: {
     if (!Array.isArray(list) || list.length === 0) {
       throw new Error('未返回有效词条列表');
     }
-    return list.slice(0, count).map((item: any) => ({
-      name: String(item.name || '').trim(),
-      note: String(item.note || '').trim(),
-      difficulty: params.difficulty,
-    })).filter((item: AICandidateWord) => item.name.length > 0);
+
+    const seenNames = new Set<string>();
+    const uniqueList: AICandidateWord[] = [];
+
+    for (const item of list) {
+      const name = String(item.name || '').trim();
+      if (!name || seenNames.has(name)) continue;
+      seenNames.add(name);
+      uniqueList.push({
+        name,
+        note: String(item.note || '').trim(),
+        difficulty: params.difficulty,
+      });
+      if (uniqueList.length >= count) break;
+    }
+
+    return uniqueList;
   } catch (err: any) {
     throw new Error(`解析 AI 灵感词条失败: ${err.message}`);
   }

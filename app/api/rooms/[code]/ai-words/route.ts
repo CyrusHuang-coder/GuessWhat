@@ -27,13 +27,24 @@ export async function POST(
     const theme = state.session.theme || '日常物品';
     const difficulty = state.session.difficulty;
 
-    // 1. 如果配置了 AI，尝试让 AI 动态实时生成
+    let excludeWords: string[] = [];
+    try {
+      const body = await req.json();
+      if (Array.isArray(body?.excludeWords)) {
+        excludeWords = body.excludeWords.map((s: any) => String(s).trim()).filter(Boolean);
+      }
+    } catch (e) {
+      // 允许空 body
+    }
+
+    // 1. 如果配置了 AI，尝试让 AI 动态实时生成（注入排除列表防重复）
     if (isAIConfigured()) {
       try {
         const aiWords = await generateWordCandidates({
           theme,
           difficulty,
           count: 9,
+          excludeWords,
         });
 
         if (aiWords && aiWords.length > 0) {
@@ -54,8 +65,8 @@ export async function POST(
       }
     }
 
-    // 2. 降级回退：从扩充后的本地词库中随机乱序抽取 9 个
-    const fallback = getRandomWordsByFilter(theme, difficulty, 9);
+    // 2. 降级回退：从扩充后的本地词库中排除已出词条后乱序抽取 9 个
+    const fallback = getRandomWordsByFilter(theme, difficulty, 9, excludeWords);
     return NextResponse.json({
       success: true,
       isAI: false,
