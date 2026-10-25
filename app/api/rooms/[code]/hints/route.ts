@@ -37,14 +37,25 @@ export async function POST(
         if (secretWord) {
           let hintText = `这是一条关于【${state.session.theme || '词条'}】的线索。`;
           try {
+            const answeredQuestions = (state.questions || [])
+              .filter((q) => q.status === 'answered' && q.answer)
+              .map((q) => {
+                const answerMap = { yes: '是', no: '不是', uncertain: '不确定' };
+                return {
+                  question: q.revised_text || q.original_text,
+                  answer: answerMap[q.answer as keyof typeof answerMap] || q.answer!,
+                };
+              });
+
             const aiRes = await generateHintForMaster({
               secretWord,
               theme: state.session.theme || '日常物品',
               cost,
+              previousQuestions: answeredQuestions,
             });
             hintText = aiRes.hintText;
           } catch (e) {
-            hintText = `该词条属于【${state.session.secret_word_category || '常见类别'}】，请从更具体的使用场景与物理特征思考。`;
+            hintText = `该事物存在于【${state.session.theme || '日常生活'}】范畴，请结合材质与出现环境进一步探索。`;
           }
           const result = await store.provideHint(code, 'bot_player', hint.id, hintText);
           hint = result.hint;

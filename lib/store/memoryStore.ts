@@ -111,18 +111,7 @@ export class MemoryRoomStore implements IRoomStore {
     const now = new Date().toISOString();
     const hostToken = crypto.randomUUID();
     const botPlayerId = 'bot_player';
-    const theme = options?.theme || '日常物品';
-    const difficulty = options?.difficulty || 'easy';
-
-    // 从词库随机抽取一个秘密词条作为 AI 的题
-    const candidateWords = getRandomWordsByFilter(theme, difficulty, 1);
-    const chosenWord = candidateWords[0] || {
-      id: 'bot_fallback',
-      name: '橡皮擦',
-      theme: '日常物品',
-      difficulty: 'easy' as Difficulty,
-      note: '修正字迹的工具',
-    };
+    const difficulty = options?.difficulty || 'medium';
 
     const room: Room = {
       id: crypto.randomUUID(),
@@ -143,16 +132,16 @@ export class MemoryRoomStore implements IRoomStore {
       id: sessionId,
       room_id: room.id,
       round_number: 1,
-      status: 'playing', // 直接进入游戏提问对决
+      status: 'setting_selection', // 允许猜词人自主选择第一局的主题与难度
       question_master_id: botPlayerId, // AI 担任出题人
       guesser_id: hostToken, // 玩家担任猜词人
-      theme,
+      theme: null,
       difficulty,
       mode: 'normal',
       max_questions: 20,
-      secret_word: chosenWord.name,
-      secret_word_category: chosenWord.theme,
-      secret_word_note: chosenWord.note || null,
+      secret_word: null,
+      secret_word_category: null,
+      secret_word_note: null,
       is_custom_word: false,
       completed_questions_count: 0,
       wrong_guesses_count: 0,
@@ -194,32 +183,23 @@ export class MemoryRoomStore implements IRoomStore {
     const now = new Date().toISOString();
     room.updated_at = now;
 
-    const theme = options?.theme || '日常物品';
-    const difficulty = options?.difficulty || 'easy';
-    const candidateWords = getRandomWordsByFilter(theme, difficulty, 1);
-    const chosenWord = candidateWords[0] || {
-      id: 'bot_fallback',
-      name: '橡皮擦',
-      theme: '日常物品',
-      difficulty: 'easy' as Difficulty,
-      note: '修正字迹的工具',
-    };
+    const difficulty = options?.difficulty || 'medium';
 
     const sessionId = crypto.randomUUID();
     const session: GameSession = {
       id: sessionId,
       room_id: room.id,
       round_number: 1,
-      status: 'playing',
+      status: 'setting_selection', // 房主召唤 AI 陪练后，直接选择规则开局
       question_master_id: botPlayerId,
       guesser_id: hostToken,
-      theme,
+      theme: null,
       difficulty,
       mode: 'normal',
       max_questions: 20,
-      secret_word: chosenWord.name,
-      secret_word_category: chosenWord.theme,
-      secret_word_note: chosenWord.note || null,
+      secret_word: null,
+      secret_word_category: null,
+      secret_word_note: null,
       is_custom_word: false,
       completed_questions_count: 0,
       wrong_guesses_count: 0,
@@ -443,7 +423,26 @@ export class MemoryRoomStore implements IRoomStore {
     }
     session.ai_quota_used = 0;
 
-    session.status = 'word_selection';
+    // 若出题人是 AI 陪练 (bot_player)，自动根据玩家选定的主题与难度抽取秘密词条并立即开局
+    if (session.question_master_id === 'bot_player') {
+      const candidateWords = getRandomWordsByFilter(session.theme, session.difficulty, 1);
+      const chosenWord = candidateWords[0] || {
+        id: 'bot_fallback',
+        name: '橡皮擦',
+        theme: session.theme || '日常物品',
+        difficulty: session.difficulty || 'easy',
+        note: '修正字迹的工具',
+      };
+      session.secret_word = chosenWord.name;
+      session.secret_word_category = chosenWord.theme;
+      session.secret_word_note = chosenWord.note || null;
+      session.is_custom_word = false;
+      session.status = 'playing';
+      session.started_at = new Date().toISOString();
+    } else {
+      session.status = 'word_selection';
+    }
+
     realtimeBroadcaster.notify(uppercaseCode, 'SETTINGS_SAVED');
     return { ...session };
   }

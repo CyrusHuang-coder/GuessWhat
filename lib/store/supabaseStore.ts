@@ -104,17 +104,7 @@ export class SupabaseRoomStore implements IRoomStore {
     const code = generateRoomCode();
     const hostToken = crypto.randomUUID();
     const botPlayerId = 'bot_player';
-    const theme = options?.theme || '日常物品';
-    const difficulty = options?.difficulty || 'easy';
-
-    const candidateWords = getRandomWordsByFilter(theme, difficulty, 1);
-    const chosenWord = candidateWords[0] || {
-      id: 'bot_fallback',
-      name: '橡皮擦',
-      theme: '日常物品',
-      difficulty: 'easy' as Difficulty,
-      note: '修正字迹的工具',
-    };
+    const difficulty = options?.difficulty || 'medium';
 
     const { data: room, error: roomErr } = await supabase
       .from('rooms')
@@ -133,19 +123,19 @@ export class SupabaseRoomStore implements IRoomStore {
       throw new Error(`创建人机房间失败: ${roomErr?.message}`);
     }
 
-    const { error: sessionErr } = await supabase.from('sessions').insert({
+    const { error: sessionErr } = await supabase.from('game_sessions').insert({
       room_id: room.id,
       round_number: 1,
-      status: 'playing',
+      status: 'setting_selection', // 允许猜词人自主选择第一局的主题与难度
       question_master_id: botPlayerId,
       guesser_id: hostToken,
-      theme,
+      theme: null,
       difficulty,
       mode: 'normal',
       max_questions: 20,
-      secret_word: chosenWord.name,
-      secret_word_category: chosenWord.theme,
-      secret_word_note: chosenWord.note || null,
+      secret_word: null,
+      secret_word_category: null,
+      secret_word_note: null,
       ai_quota_total: 2,
       ai_quota_used: 0,
       off_track_enabled: false,
@@ -170,17 +160,7 @@ export class SupabaseRoomStore implements IRoomStore {
     if (room.host_player_id !== hostToken) throw new Error('仅房主可邀请 AI 陪练');
 
     const botPlayerId = 'bot_player';
-    const theme = options?.theme || '日常物品';
-    const difficulty = options?.difficulty || 'easy';
-
-    const candidateWords = getRandomWordsByFilter(theme, difficulty, 1);
-    const chosenWord = candidateWords[0] || {
-      id: 'bot_fallback',
-      name: '橡皮擦',
-      theme: '日常物品',
-      difficulty: 'easy' as Difficulty,
-      note: '修正字迹的工具',
-    };
+    const difficulty = options?.difficulty || 'medium';
 
     const { data: updatedRoom, error: roomErr } = await supabase
       .from('rooms')
@@ -198,19 +178,19 @@ export class SupabaseRoomStore implements IRoomStore {
       throw new Error(`更新房间人机状态失败: ${roomErr?.message}`);
     }
 
-    const { error: sessionErr } = await supabase.from('sessions').insert({
+    const { error: sessionErr } = await supabase.from('game_sessions').insert({
       room_id: room.id,
       round_number: 1,
-      status: 'playing',
+      status: 'setting_selection', // 房主召唤 AI 陪练后，直接选择规则开局
       question_master_id: botPlayerId,
       guesser_id: hostToken,
-      theme,
+      theme: null,
       difficulty,
       mode: 'normal',
       max_questions: 20,
-      secret_word: chosenWord.name,
-      secret_word_category: chosenWord.theme,
-      secret_word_note: chosenWord.note || null,
+      secret_word: null,
+      secret_word_category: null,
+      secret_word_note: null,
       ai_quota_total: 2,
       ai_quota_used: 0,
       off_track_enabled: false,
@@ -425,6 +405,28 @@ export class SupabaseRoomStore implements IRoomStore {
     const quota = settings.difficulty === 'easy' ? 3 : settings.difficulty === 'medium' ? 2 : 1;
     const maxQ = settings.mode === 'challenge' ? Math.max(1, settings.maxQuestions ?? 15) : 999;
 
+    // 若出题人是 AI 陪练 (bot_player)，自动根据玩家选定的主题与难度抽取秘密词条并立即开局
+    let nextStatus: string = 'word_selection';
+    let secretWordPayload: any = {};
+
+    if (state.session.question_master_id === 'bot_player') {
+      const candidateWords = getRandomWordsByFilter(settings.theme, settings.difficulty, 1);
+      const chosenWord = candidateWords[0] || {
+        id: 'bot_fallback',
+        name: '橡皮擦',
+        theme: settings.theme || '日常物品',
+        difficulty: settings.difficulty || 'easy',
+        note: '修正字迹的工具',
+      };
+      nextStatus = 'playing';
+      secretWordPayload = {
+        secret_word: chosenWord.name,
+        secret_word_category: chosenWord.theme,
+        secret_word_note: chosenWord.note || null,
+        started_at: new Date().toISOString(),
+      };
+    }
+
     const { data: updated, error } = await supabase
       .from('game_sessions')
       .update({
@@ -434,7 +436,8 @@ export class SupabaseRoomStore implements IRoomStore {
         max_questions: maxQ,
         ai_quota_total: quota,
         ai_quota_used: 0,
-        status: 'word_selection',
+        status: nextStatus,
+        ...secretWordPayload,
       })
       .eq('id', state.session.id)
       .select()

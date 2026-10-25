@@ -3,6 +3,7 @@ import { POST as createBotRoomPost } from '../app/api/rooms/bot/route';
 import { POST as inviteBotPost } from '../app/api/rooms/[code]/bot/route';
 import { POST as createNormalRoomPost } from '../app/api/rooms/route';
 import { GET as getRoomState } from '../app/api/rooms/[code]/route';
+import { POST as saveSettingsPost } from '../app/api/rooms/[code]/settings/route';
 import { POST as submitQuestionPost } from '../app/api/rooms/[code]/questions/route';
 import { POST as submitGuessPost } from '../app/api/rooms/[code]/guesses/route';
 import { getRoomStore } from '../lib/store';
@@ -23,7 +24,7 @@ function createMockRequest(url: string, method: string, body?: any, headers: Rec
 }
 
 describe('人机对战 (Bot Mode) 完整测试', () => {
-  it('能够创建人机对局，且 AI 自动裁决问题与正确猜词', async () => {
+  it('能够创建人机对局，且首局允许玩家选择主题难度后 AI 自动出题并裁决', async () => {
     // 1. 创建单人人机房间
     const reqCreate = createMockRequest('/api/rooms/bot', 'POST', { nickname: '孤勇者侦探' });
     const resCreate = await createBotRoomPost(reqCreate);
@@ -33,16 +34,29 @@ describe('人机对战 (Bot Mode) 完整测试', () => {
     const code = dataCreate.roomCode;
     const playerToken = dataCreate.playerToken;
 
-    // 2. 检查房间状态：人类为猜词人，bot_player 为出题人，防剧透机制生效
+    // 2. 检查房间状态：第一局进入 setting_selection，人类为猜词人，bot_player 为出题人，防剧透机制生效
     const reqState = createMockRequest(`/api/rooms/${code}`, 'GET', undefined, { 'x-player-token': playerToken });
     const resState = await getRoomState(reqState, { params: Promise.resolve({ code }) });
     const dataState = await resState.json();
 
     expect(dataState.data.myRole).toBe('guesser');
-    expect(dataState.data.session.status).toBe('playing');
+    expect(dataState.data.session.status).toBe('setting_selection');
     expect(dataState.data.session.secret_word).toBeNull(); // 绝不泄密
 
-    // 获取内部真实的 secretWord 用于验证猜词
+    // 2.1 玩家自主选择游戏主题与难度并提交
+    const reqSettings = createMockRequest(
+      `/api/rooms/${code}/settings`,
+      'POST',
+      { theme: '动物', difficulty: 'easy', mode: 'normal' },
+      { 'x-player-token': playerToken }
+    );
+    const resSettings = await saveSettingsPost(reqSettings, { params: Promise.resolve({ code }) });
+    const dataSettings = await resSettings.json();
+    expect(dataSettings.success).toBe(true);
+    expect(dataSettings.session.status).toBe('playing');
+    expect(dataSettings.session.theme).toBe('动物');
+
+    // 获取内部由 AI 自动抽取的真实 secretWord 用于验证猜词
     const store = getRoomStore();
     const actualSecretWord = await store.getSecretWordForBot(code);
     expect(actualSecretWord).toBeTruthy();
@@ -80,7 +94,7 @@ describe('人机对战 (Bot Mode) 完整测试', () => {
     expect(dataFinalState.data.session.secret_word).toBe(actualSecretWord);
   });
 
-  it('在普通等待房间内，房主可以直接召唤 AI 陪练立即开启单挑', async () => {
+  it('在普通等待房间内，房主可以直接召唤 AI 陪练并自主选定主题开启对局', async () => {
     // 1. 创建普通房间
     const reqCreate = createMockRequest('/api/rooms', 'POST', { hostNickname: '独行侠' });
     const resCreate = await createNormalRoomPost(reqCreate);
@@ -95,12 +109,24 @@ describe('人机对战 (Bot Mode) 完整测试', () => {
     expect(dataInvite.success).toBe(true);
     expect(dataInvite.room.guest_player_id).toBe('bot_player');
 
-    // 3. 验证进入 playing 状态
+    // 3. 验证进入 setting_selection 状态，人类为猜词人
     const reqState = createMockRequest(`/api/rooms/${code}`, 'GET', undefined, { 'x-player-token': token });
     const resState = await getRoomState(reqState, { params: Promise.resolve({ code }) });
     const dataState = await resState.json();
-    expect(dataState.data.session.status).toBe('playing');
+    expect(dataState.data.session.status).toBe('setting_selection');
     expect(dataState.data.session.question_master_id).toBe('bot_player');
     expect(dataState.data.myRole).toBe('guesser');
+
+    // 4. 提交规则设置后自动进入 playing
+    const reqSettings = createMockRequest(
+      `/api/rooms/${code}/settings`,
+      'POST',
+      { theme: '日常物品', difficulty: 'easy', mode: 'normal' },
+      { 'x-player-token': token }
+    );
+    const resSettings = await saveSettingsPost(reqSettings, { params: Promise.resolve({ code }) });
+    const dataSettings = await resSettings.json();
+    expect(dataSettings.success).toBe(true);
+    expect(dataSettings.session.status).toBe('playing');
   });
 });

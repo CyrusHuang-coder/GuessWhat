@@ -169,17 +169,7 @@ export class KvRoomStore implements IRoomStore {
     const now = new Date().toISOString();
     const hostToken = crypto.randomUUID();
     const botPlayerId = 'bot_player';
-    const theme = options?.theme || '日常物品';
-    const difficulty = options?.difficulty || 'easy';
-
-    const candidateWords = getRandomWordsByFilter(theme, difficulty, 1);
-    const chosenWord = candidateWords[0] || {
-      id: 'bot_fallback',
-      name: '橡皮擦',
-      theme: '日常物品',
-      difficulty: 'easy' as Difficulty,
-      note: '修正字迹的工具',
-    };
+    const difficulty = options?.difficulty || 'medium';
 
     const room: Room = {
       id: crypto.randomUUID(),
@@ -200,16 +190,16 @@ export class KvRoomStore implements IRoomStore {
       id: sessionId,
       room_id: room.id,
       round_number: 1,
-      status: 'playing',
+      status: 'setting_selection', // 允许猜词人自主选择第一局的主题与难度
       question_master_id: botPlayerId,
       guesser_id: hostToken,
-      theme,
+      theme: null,
       difficulty,
       mode: 'normal',
       max_questions: 20,
-      secret_word: chosenWord.name,
-      secret_word_category: chosenWord.theme,
-      secret_word_note: chosenWord.note || null,
+      secret_word: null,
+      secret_word_category: null,
+      secret_word_note: null,
       is_custom_word: false,
       completed_questions_count: 0,
       wrong_guesses_count: 0,
@@ -253,32 +243,23 @@ export class KvRoomStore implements IRoomStore {
     const now = new Date().toISOString();
     data.room.updated_at = now;
 
-    const theme = options?.theme || '日常物品';
-    const difficulty = options?.difficulty || 'easy';
-    const candidateWords = getRandomWordsByFilter(theme, difficulty, 1);
-    const chosenWord = candidateWords[0] || {
-      id: 'bot_fallback',
-      name: '橡皮擦',
-      theme: '日常物品',
-      difficulty: 'easy' as Difficulty,
-      note: '修正字迹的工具',
-    };
+    const difficulty = options?.difficulty || 'medium';
 
     const sessionId = crypto.randomUUID();
     const session: GameSession = {
       id: sessionId,
       room_id: data.room.id,
       round_number: 1,
-      status: 'playing',
+      status: 'setting_selection', // 房主召唤 AI 陪练后，直接选择规则开局
       question_master_id: botPlayerId,
       guesser_id: hostToken,
-      theme,
+      theme: null,
       difficulty,
       mode: 'normal',
       max_questions: 20,
-      secret_word: chosenWord.name,
-      secret_word_category: chosenWord.theme,
-      secret_word_note: chosenWord.note || null,
+      secret_word: null,
+      secret_word_category: null,
+      secret_word_note: null,
       is_custom_word: false,
       completed_questions_count: 0,
       wrong_guesses_count: 0,
@@ -456,7 +437,26 @@ export class KvRoomStore implements IRoomStore {
     else data.session.ai_quota_total = 1;
     data.session.ai_quota_used = 0;
 
-    data.session.status = 'word_selection';
+    // 若出题人是 AI 陪练 (bot_player)，自动根据玩家选定的主题与难度抽取秘密词条并立即开局
+    if (data.session.question_master_id === 'bot_player') {
+      const candidateWords = getRandomWordsByFilter(data.session.theme, data.session.difficulty, 1);
+      const chosenWord = candidateWords[0] || {
+        id: 'bot_fallback',
+        name: '橡皮擦',
+        theme: data.session.theme || '日常物品',
+        difficulty: data.session.difficulty || 'easy',
+        note: '修正字迹的工具',
+      };
+      data.session.secret_word = chosenWord.name;
+      data.session.secret_word_category = chosenWord.theme;
+      data.session.secret_word_note = chosenWord.note || null;
+      data.session.is_custom_word = false;
+      data.session.status = 'playing';
+      data.session.started_at = new Date().toISOString();
+    } else {
+      data.session.status = 'word_selection';
+    }
+
     await this.saveStored(code, data);
     realtimeBroadcaster.notify(code.toUpperCase(), 'SETTINGS_SAVED');
     return { ...data.session };
