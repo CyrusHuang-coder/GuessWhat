@@ -29,6 +29,46 @@ const QUICK_PHRASES = [
   '承让承让😏',
 ];
 
+// 微信风格时间格式化
+function formatChatTime(dateString: string): string {
+  if (!dateString) return '';
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return '';
+
+  const now = new Date();
+  const isToday =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+
+  const hours = d.getHours().toString().padStart(2, '0');
+  const minutes = d.getMinutes().toString().padStart(2, '0');
+  const timeStr = `${hours}:${minutes}`;
+
+  if (isToday) {
+    return timeStr;
+  }
+
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday =
+    d.getFullYear() === yesterday.getFullYear() &&
+    d.getMonth() === yesterday.getMonth() &&
+    d.getDate() === yesterday.getDate();
+
+  if (isYesterday) {
+    return `昨天 ${timeStr}`;
+  }
+
+  if (d.getFullYear() === now.getFullYear()) {
+    const month = d.getMonth() + 1;
+    const date = d.getDate();
+    return `${month}月${date}日 ${timeStr}`;
+  }
+
+  return `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')} ${timeStr}`;
+}
+
 export function RoomChatDrawer({
   roomCode,
   playerToken,
@@ -211,24 +251,38 @@ export function RoomChatDrawer({
                 暂无聊天消息，开启连麦或发句调侃打个招呼吧~
               </div>
             ) : (
-              chatMessages.map((msg) => {
+              chatMessages.map((msg, index) => {
                 const isMe = msg.sender_id === playerToken || msg.sender_nickname === myNickname;
+                const prevMsg = index > 0 ? chatMessages[index - 1] : null;
+
+                // 微信规则：第一条消息展示时间；后续消息若与上一条间隔超过 1 分钟（60秒），展示时间标记
+                const showTimeDivider =
+                  !prevMsg ||
+                  new Date(msg.created_at).getTime() - new Date(prevMsg.created_at).getTime() >
+                    60 * 1000;
+
                 return (
-                  <div
-                    key={msg.id}
-                    className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
-                  >
-                    <span className="text-[10px] text-ink-subtle mb-0.5 px-1">
-                      {isMe ? '我' : msg.sender_nickname}
-                    </span>
-                    <div
-                      className={`max-w-[85%] px-3 py-1.5 rounded-game-sm text-xs leading-relaxed shadow-2xs ${
-                        isMe
-                          ? 'bg-sage-500 text-white rounded-tr-none'
-                          : 'bg-white border border-warm-border text-ink-text rounded-tl-none'
-                      }`}
-                    >
-                      {msg.text}
+                  <div key={msg.id} className="space-y-1.5">
+                    {showTimeDivider && (
+                      <div className="flex justify-center my-1.5">
+                        <span className="text-[10px] text-ink-subtle/80 bg-warm-subtle/70 px-2.5 py-0.5 rounded-full border border-warm-border/40 font-sans select-none shadow-2xs">
+                          {formatChatTime(msg.created_at)}
+                        </span>
+                      </div>
+                    )}
+                    <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                      <span className="text-[10px] text-ink-subtle mb-0.5 px-1">
+                        {isMe ? '我' : msg.sender_nickname}
+                      </span>
+                      <div
+                        className={`max-w-[85%] px-3 py-1.5 rounded-game-sm text-xs leading-relaxed shadow-2xs ${
+                          isMe
+                            ? 'bg-sage-500 text-white rounded-tr-none'
+                            : 'bg-white border border-warm-border text-ink-text rounded-tl-none'
+                        }`}
+                      >
+                        {msg.text}
+                      </div>
                     </div>
                   </div>
                 );
