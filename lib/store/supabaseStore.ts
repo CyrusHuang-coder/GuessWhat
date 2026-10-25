@@ -158,6 +158,72 @@ export class SupabaseRoomStore implements IRoomStore {
     return { room, playerToken: hostToken };
   }
 
+  async addBotToRoom(
+    code: string,
+    hostToken: string,
+    options?: { theme?: string; difficulty?: Difficulty }
+  ): Promise<Room> {
+    const supabase = this.ensureClient();
+    const uppercaseCode = code.toUpperCase();
+    const room = await this.getRoomByCode(uppercaseCode);
+    if (!room) throw new Error('房间不存在');
+    if (room.host_player_id !== hostToken) throw new Error('仅房主可邀请 AI 陪练');
+
+    const botPlayerId = 'bot_player';
+    const theme = options?.theme || '日常物品';
+    const difficulty = options?.difficulty || 'easy';
+
+    const candidateWords = getRandomWordsByFilter(theme, difficulty, 1);
+    const chosenWord = candidateWords[0] || {
+      id: 'bot_fallback',
+      name: '橡皮擦',
+      theme: '日常物品',
+      difficulty: 'easy' as Difficulty,
+      note: '修正字迹的工具',
+    };
+
+    const { data: updatedRoom, error: roomErr } = await supabase
+      .from('rooms')
+      .update({
+        guest_player_id: botPlayerId,
+        guest_nickname: 'AI 智能出题官 (DeepSeek)',
+        status: 'in_game',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', room.id)
+      .select()
+      .single();
+
+    if (roomErr || !updatedRoom) {
+      throw new Error(`更新房间人机状态失败: ${roomErr?.message}`);
+    }
+
+    const { error: sessionErr } = await supabase.from('sessions').insert({
+      room_id: room.id,
+      round_number: 1,
+      status: 'playing',
+      question_master_id: botPlayerId,
+      guesser_id: hostToken,
+      theme,
+      difficulty,
+      mode: 'normal',
+      max_questions: 20,
+      secret_word: chosenWord.name,
+      secret_word_category: chosenWord.theme,
+      secret_word_note: chosenWord.note || null,
+      ai_quota_total: 2,
+      ai_quota_used: 0,
+      off_track_enabled: false,
+    });
+
+    if (sessionErr) {
+      throw new Error(`初始化人机对局失败: ${sessionErr.message}`);
+    }
+
+    realtimeBroadcaster.notify(uppercaseCode, 'ROOM_JOINED');
+    return updatedRoom;
+  }
+
   async getSecretWordForBot(code: string): Promise<string | null> {
     const supabase = this.ensureClient();
     const room = await this.getRoomByCode(code);

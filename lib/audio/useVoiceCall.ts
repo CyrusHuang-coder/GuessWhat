@@ -335,13 +335,13 @@ export function useVoiceCall({
       await pc.setLocalDescription(answer);
       await sendSignal('answer', answer);
 
-      // 握手超时兜底保护（15 秒无法连通则提示）
+      // 握手超时兜底保护（25 秒无法连通则提示）
       connectingTimeoutRef.current = setTimeout(() => {
         if (pcRef.current && pcRef.current.connectionState !== 'connected') {
-          setErrorMsg('语音通道握手超时（可能由于手机蜂窝网络 NAT 限制），建议在聊天室打字交流');
+          setErrorMsg('实时连麦因蜂窝网络 NAT 限制未通，您可在下方点击麦克风发送对讲语音（支持转文字）');
           cleanupCall();
         }
-      }, 15000);
+      }, 25000);
     } catch (err: any) {
       console.error('Accept call error', err);
       setErrorMsg(

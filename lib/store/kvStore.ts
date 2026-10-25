@@ -236,6 +236,72 @@ export class KvRoomStore implements IRoomStore {
     return { room, playerToken: hostToken };
   }
 
+  async addBotToRoom(
+    code: string,
+    hostToken: string,
+    options?: { theme?: string; difficulty?: Difficulty }
+  ): Promise<Room> {
+    const uppercaseCode = code.toUpperCase();
+    const data = await this.getStored(uppercaseCode);
+    if (!data) throw new Error('房间不存在');
+    if (data.room.host_player_id !== hostToken) throw new Error('仅房主可邀请 AI 陪练');
+
+    const botPlayerId = 'bot_player';
+    data.room.guest_player_id = botPlayerId;
+    data.room.guest_nickname = 'AI 智能出题官 (DeepSeek)';
+    data.room.status = 'in_game';
+    const now = new Date().toISOString();
+    data.room.updated_at = now;
+
+    const theme = options?.theme || '日常物品';
+    const difficulty = options?.difficulty || 'easy';
+    const candidateWords = getRandomWordsByFilter(theme, difficulty, 1);
+    const chosenWord = candidateWords[0] || {
+      id: 'bot_fallback',
+      name: '橡皮擦',
+      theme: '日常物品',
+      difficulty: 'easy' as Difficulty,
+      note: '修正字迹的工具',
+    };
+
+    const sessionId = crypto.randomUUID();
+    const session: GameSession = {
+      id: sessionId,
+      room_id: data.room.id,
+      round_number: 1,
+      status: 'playing',
+      question_master_id: botPlayerId,
+      guesser_id: hostToken,
+      theme,
+      difficulty,
+      mode: 'normal',
+      max_questions: 20,
+      secret_word: chosenWord.name,
+      secret_word_category: chosenWord.theme,
+      secret_word_note: chosenWord.note || null,
+      is_custom_word: false,
+      completed_questions_count: 0,
+      wrong_guesses_count: 0,
+      ai_quota_total: 2,
+      ai_quota_used: 0,
+      off_track_enabled: false,
+      result: null,
+      started_at: now,
+      ended_at: null,
+      created_at: now,
+    };
+
+    data.session = session;
+    data.questions = [];
+    data.guesses = [];
+    data.hints = [];
+    data.offTrackEvaluations = [];
+
+    await this.saveStored(uppercaseCode, data);
+    realtimeBroadcaster.notify(uppercaseCode, 'ROOM_JOINED');
+    return data.room;
+  }
+
   async getSecretWordForBot(code: string): Promise<string | null> {
     const data = await this.getStored(code);
     return data?.session?.secret_word || null;

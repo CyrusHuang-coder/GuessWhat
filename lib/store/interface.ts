@@ -20,6 +20,11 @@ export interface IRoomStore {
     nickname: string,
     options?: { theme?: string; difficulty?: Difficulty }
   ): Promise<{ room: Room; playerToken: string }>;
+  addBotToRoom(
+    code: string,
+    hostToken: string,
+    options?: { theme?: string; difficulty?: Difficulty }
+  ): Promise<Room>;
   getSecretWordForBot(code: string): Promise<string | null>;
   getRoomByCode(code: string): Promise<Room | null>;
   joinRoom(

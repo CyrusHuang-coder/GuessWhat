@@ -177,6 +177,72 @@ export class MemoryRoomStore implements IRoomStore {
     return { room, playerToken: hostToken };
   }
 
+  async addBotToRoom(
+    code: string,
+    hostToken: string,
+    options?: { theme?: string; difficulty?: Difficulty }
+  ): Promise<Room> {
+    const uppercaseCode = code.toUpperCase();
+    const room = this.rooms.get(uppercaseCode);
+    if (!room) throw new Error('房间不存在');
+    if (room.host_player_id !== hostToken) throw new Error('仅房主可邀请 AI 陪练');
+
+    const botPlayerId = 'bot_player';
+    room.guest_player_id = botPlayerId;
+    room.guest_nickname = 'AI 智能出题官 (DeepSeek)';
+    room.status = 'in_game';
+    const now = new Date().toISOString();
+    room.updated_at = now;
+
+    const theme = options?.theme || '日常物品';
+    const difficulty = options?.difficulty || 'easy';
+    const candidateWords = getRandomWordsByFilter(theme, difficulty, 1);
+    const chosenWord = candidateWords[0] || {
+      id: 'bot_fallback',
+      name: '橡皮擦',
+      theme: '日常物品',
+      difficulty: 'easy' as Difficulty,
+      note: '修正字迹的工具',
+    };
+
+    const sessionId = crypto.randomUUID();
+    const session: GameSession = {
+      id: sessionId,
+      room_id: room.id,
+      round_number: 1,
+      status: 'playing',
+      question_master_id: botPlayerId,
+      guesser_id: hostToken,
+      theme,
+      difficulty,
+      mode: 'normal',
+      max_questions: 20,
+      secret_word: chosenWord.name,
+      secret_word_category: chosenWord.theme,
+      secret_word_note: chosenWord.note || null,
+      is_custom_word: false,
+      completed_questions_count: 0,
+      wrong_guesses_count: 0,
+      ai_quota_total: 2,
+      ai_quota_used: 0,
+      off_track_enabled: false,
+      result: null,
+      started_at: now,
+      ended_at: null,
+      created_at: now,
+    };
+
+    this.sessions.set(sessionId, session);
+    this.currentSessionByRoom.set(uppercaseCode, sessionId);
+    this.questionsBySession.set(sessionId, []);
+    this.guessesBySession.set(sessionId, []);
+    this.hintsBySession.set(sessionId, []);
+    this.offTrackEvaluationsBySession.set(sessionId, []);
+
+    realtimeBroadcaster.notify(uppercaseCode, 'ROOM_JOINED');
+    return room;
+  }
+
   async getSecretWordForBot(code: string): Promise<string | null> {
     const uppercaseCode = code.toUpperCase();
     const sessionId = this.currentSessionByRoom.get(uppercaseCode);

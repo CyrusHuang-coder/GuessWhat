@@ -648,10 +648,10 @@ export function RoomChatDrawer({
       )}
 
       {/* 统一外层容器：聊天抽屉与小胶囊在同一垂直流中，小胶囊始终紧贴在窗口下方，绝不遮挡 */}
-      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-40 flex flex-col items-end pointer-events-none gap-2">
+      <div className="fixed bottom-3 right-3 sm:bottom-6 sm:right-6 z-50 flex flex-col items-end pointer-events-none gap-2">
         {/* 聊天抽屉弹窗 */}
         {isOpen && (
-          <div className="pointer-events-auto w-[calc(100vw-2rem)] sm:w-[380px] max-w-[400px] h-[min(520px,calc(100vh-140px))] bg-[#FAF9F5] rounded-2xl border-2 border-sage-700/25 shadow-[0_25px_60px_-15px_rgba(20,35,25,0.4)] ring-1 ring-black/10 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-150">
+          <div className="pointer-events-auto w-[calc(100vw-1.5rem)] sm:w-[380px] max-w-[400px] h-[min(480px,calc(100dvh-130px))] bg-[#FAF9F5] rounded-2xl border-2 border-sage-700/25 shadow-[0_25px_60px_-15px_rgba(20,35,25,0.4)] ring-1 ring-black/10 flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-3 duration-150">
             {/* 深色高对比度顶栏，清晰界定窗口 */}
             <div className="flex items-center justify-between px-3.5 py-2.5 bg-sage-700 text-white shrink-0">
               <div className="flex items-center gap-1.5 text-xs font-bold tracking-wide">
@@ -856,24 +856,24 @@ export function RoomChatDrawer({
           </div>
         )}
 
-        {/* 浮动入口/收起胶囊按钮：紧贴在聊天窗口正下方，绝不遮挡 */}
+        {/* 浮动入口/收起胶囊按钮：保持纯白小胶囊，紧贴在聊天窗口正下方，绝不遮挡 */}
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className={`pointer-events-auto relative flex items-center gap-1.5 px-3.5 py-2 rounded-full border shadow-board active:scale-95 text-xs font-bold transition ${
+          className={`pointer-events-auto relative flex items-center gap-1.5 px-3.5 py-2 rounded-full border shadow-board active:scale-95 text-xs font-bold transition bg-white ${
             isOpen
-              ? 'bg-sage-700 text-white border-sage-800 hover:bg-sage-800'
+              ? 'border-2 border-sage-500 text-ink-text shadow-md hover:bg-warm-bg'
               : voiceCall.callState === 'connected'
-              ? 'bg-sage-50 border-sage-300 text-sage-900 ring-2 ring-sage-400/40'
+              ? 'border-sage-300 text-sage-900 ring-2 ring-sage-400/40 bg-sage-50'
               : voiceCall.callState === 'incoming'
-              ? 'bg-amber-50 border-amber-300 text-amber-900 animate-bounce'
-              : 'bg-white border-warm-border text-ink-text hover:bg-warm-bg'
+              ? 'border-amber-300 text-amber-900 animate-bounce bg-amber-50'
+              : 'border-warm-border text-ink-text hover:bg-warm-bg'
           }`}
           title={isOpen ? '收起聊天窗口' : '打开对局联机聊天室'}
         >
           {isOpen ? (
             <>
-              <X className="w-4 h-4" />
+              <X className="w-4 h-4 text-ink-muted" />
               <span>收起聊天</span>
             </>
           ) : (

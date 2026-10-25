@@ -14,7 +14,7 @@ import { MasterSidebar } from '@/components/MasterSidebar';
 import { SettlementModal } from '@/components/SettlementModal';
 import { RoomChatDrawer } from '@/components/RoomChatDrawer';
 import { soundEffects } from '@/lib/audio/sound';
-import { Copy, Check, Users, Loader2, UserPlus, ArrowRight } from 'lucide-react';
+import { Copy, Check, Users, Loader2, UserPlus, ArrowRight, Bot } from 'lucide-react';
 import { getPlayerToken, savePlayerToken, saveRecentRoom } from '@/lib/store/localHistory';
 
 interface PageProps {
@@ -368,6 +368,29 @@ export default function RoomPage({ params }: PageProps) {
     }
   };
 
+  const [invitingBot, setInvitingBot] = useState(false);
+  const handleInviteBot = async () => {
+    if (invitingBot || !playerToken) return;
+    setInvitingBot(true);
+    try {
+      const res = await fetch(`/api/rooms/${code}/bot`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-player-token': playerToken,
+        },
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      soundEffects.playPop();
+      fetchState();
+    } catch (err: any) {
+      alert(`召唤 AI 陪练失败: ${err.message}`);
+    } finally {
+      setInvitingBot(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-warm-bg flex flex-col items-center justify-center p-4">
@@ -547,6 +570,19 @@ export default function RoomPage({ params }: PageProps) {
               {copiedLink ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
               <span>{copiedLink ? '链接已成功复制到剪贴板！' : '复制房间邀请链接'}</span>
             </button>
+
+            {/* 好友暂时不在？直接在房间内一键唤起 AI 陪练 */}
+            <div className="pt-2 border-t border-warm-border">
+              <button
+                type="button"
+                onClick={handleInviteBot}
+                disabled={invitingBot}
+                className="w-full py-3 bg-gradient-to-r from-sage-50 to-amber-50 hover:from-sage-100 hover:to-amber-100 text-sage-900 border border-sage-300 font-bold text-xs rounded-game-sm shadow-2xs transition flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <Bot className="w-4 h-4 text-sage-600" />
+                <span>{invitingBot ? '正在唤醒 AI 智脑出题官...' : '🤖 好友暂未上线？召唤 AI 陪练立即开局'}</span>
+              </button>
+            </div>
           </div>
         )}
 
