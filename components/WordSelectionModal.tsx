@@ -252,9 +252,10 @@ export function WordSelectionModal({ state, roomCode, playerToken }: Props) {
 
         {!isCustom ? (
           <div>
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-2.5">
+            {/* 顶栏信息与操作按钮：手机端分为两排避免挤压跳动，桌面端左右对齐 */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-3">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-ink-text">
+                <span className="text-xs font-bold text-ink-text">
                   推荐候选词条
                 </span>
                 {isAIGenerated ? (
@@ -263,17 +264,18 @@ export function WordSelectionModal({ state, roomCode, playerToken }: Props) {
                   </span>
                 ) : (
                   <span className="text-[11px] text-ink-muted">
-                    精选词库 (每次刷新不重复)
+                    精选词库
                   </span>
                 )}
               </div>
 
-              <div className="flex items-center gap-2">
+              {/* 独立操作按钮行（下一排）：锁定最小宽度，构思中文案绝不导致布局跳动 */}
+              <div className="flex items-center gap-2 self-start sm:self-auto">
                 <button
                   type="button"
                   onClick={handleRefreshWords}
                   disabled={refreshing}
-                  className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-game-sm bg-sage-50 text-sage-700 hover:bg-sage-100 active:bg-sage-200 border border-sage-200 transition disabled:opacity-50"
+                  className="min-w-[88px] flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-game-sm bg-sage-50 text-sage-700 hover:bg-sage-100 active:bg-sage-200 border border-sage-300 transition shadow-2xs disabled:opacity-60"
                   title="生成全新一批不重复的灵感词条"
                 >
                   {refreshing ? (
@@ -284,7 +286,7 @@ export function WordSelectionModal({ state, roomCode, playerToken }: Props) {
                   ) : (
                     <>
                       <Sparkles className="w-3.5 h-3.5 text-sage-600" />
-                      <span>换一批 (AI灵感)</span>
+                      <span>换一批</span>
                     </>
                   )}
                 </button>
@@ -292,7 +294,7 @@ export function WordSelectionModal({ state, roomCode, playerToken }: Props) {
                 <button
                   type="button"
                   onClick={handleRandomPick}
-                  className="flex items-center gap-1 text-xs text-ink-muted hover:text-ink-text px-2 py-1 rounded-game-sm border border-warm-border hover:bg-warm-subtle transition"
+                  className="flex items-center gap-1 text-xs font-medium text-ink-muted hover:text-ink-text px-2.5 py-1.5 rounded-game-sm border border-warm-border hover:bg-warm-subtle transition shadow-2xs"
                   title="从当前候选列表中随机帮我选一个"
                 >
                   <Dices className="w-3.5 h-3.5" />

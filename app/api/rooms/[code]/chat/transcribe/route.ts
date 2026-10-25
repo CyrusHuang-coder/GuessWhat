@@ -24,3 +24,4 @@ export async function POST(
     return NextResponse.json({ success: false, error: err.message || '语音转文字失败' }, { status: 400 });
   }
 }
+
