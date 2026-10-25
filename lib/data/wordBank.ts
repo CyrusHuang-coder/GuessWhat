@@ -250,7 +250,7 @@ export function getWordsByFilter(theme?: string, difficulty?: string): WordItem[
 export function getRandomWordsByFilter(
   theme?: string,
   difficulty?: string,
-  count: number = 9,
+  count: number = 6,
   excludeWords?: string[]
 ): WordItem[] {
   let matched = getWordsByFilter(theme, difficulty);

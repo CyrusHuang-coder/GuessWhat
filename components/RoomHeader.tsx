@@ -3,20 +3,23 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { GameStateDTO } from '@/lib/types/game';
-import { Copy, Check, AlertTriangle, ArrowLeft, Smartphone, HelpCircle, X, ShieldCheck, Zap, Sparkles } from 'lucide-react';
+import { Copy, Check, AlertTriangle, ArrowLeft, Smartphone, HelpCircle, X, ShieldCheck, Zap, Sparkles, ArrowLeftRight } from 'lucide-react';
 import { EngineBadge } from './EngineBadge';
 import { SurfaceLogo } from './SurfaceLogo';
 import { InstallPwaModal } from './InstallPwaModal';
 
 interface Props {
   state: GameStateDTO;
+  playerToken?: string;
+  onRefresh?: () => void;
 }
 
-export function RoomHeader({ state }: Props) {
+export function RoomHeader({ state, playerToken, onRefresh }: Props) {
   const router = useRouter();
   const [copied, setCopied] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
+  const [swappingRoles, setSwappingRoles] = useState(false);
   const { room, session, isHost, opponentOnline } = state;
 
   // 计算双方历史大比分
@@ -42,6 +45,27 @@ export function RoomHeader({ state }: Props) {
     navigator.clipboard.writeText(url);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleSwapRoles = async () => {
+    if (swappingRoles || !playerToken) return;
+    setSwappingRoles(true);
+    try {
+      const res = await fetch(`/api/rooms/${room.code}/roles/swap`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-player-token': playerToken,
+        },
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      onRefresh?.();
+    } catch (err: any) {
+      alert(`调换身份失败: ${err.message}`);
+    } finally {
+      setSwappingRoles(false);
+    }
   };
 
   const getRoleBadge = (playerId: string | null) => {
@@ -118,12 +142,12 @@ export function RoomHeader({ state }: Props) {
               {session?.theme && (
                 <>
                   <span>•</span>
-                  <span>主题: <strong className="text-ink-text">{session.theme}</strong></span>
+                  <span><strong className="text-ink-text">{session.theme}</strong></span>
                   <span>•</span>
-                  <span>难度: <strong className="text-ink-text">{difficultyMap[session.difficulty]}</strong></span>
+                  <span><strong className="text-ink-text">{difficultyMap[session.difficulty]}</strong></span>
                   <span>•</span>
                   <span className="font-medium text-ink-text">
-                    {session.mode === 'challenge' ? `挑战模式 (${session.max_questions}次)` : '普通模式 (不限次)'}
+                    {session.mode === 'challenge' ? `挑战(${session.max_questions}次)` : '无限次'}
                   </span>
                 </>
               )}
@@ -148,7 +172,20 @@ export function RoomHeader({ state }: Props) {
               {getRoleBadge(room.host_player_id)}
             </div>
 
-            <span className="text-ink-subtle font-bold px-0.5">VS</span>
+            {session?.status === 'setting_selection' && room.guest_player_id ? (
+              <button
+                type="button"
+                onClick={handleSwapRoles}
+                disabled={swappingRoles}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-sage-50 hover:bg-sage-100 active:scale-95 text-sage-800 text-[11px] font-bold border border-sage-300 transition shadow-2xs"
+                title="双方调换出题与猜词身份"
+              >
+                <ArrowLeftRight className={`w-3 h-3 text-sage-600 ${swappingRoles ? 'animate-spin' : ''}`} />
+                <span>换身份</span>
+              </button>
+            ) : (
+              <span className="text-ink-subtle font-bold px-0.5">VS</span>
+            )}
 
             {/* 加入者 */}
             <div className="flex items-center gap-1.5 px-2 py-1 bg-white rounded shadow-2xs border border-warm-border">
@@ -193,7 +230,9 @@ export function RoomHeader({ state }: Props) {
             <HelpCircle className="w-3.5 h-3.5" />
           </button>
 
-          <EngineBadge />
+          <div className="hidden sm:block">
+            <EngineBadge />
+          </div>
         </div>
       </div>
 

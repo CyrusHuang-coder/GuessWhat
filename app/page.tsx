@@ -158,69 +158,77 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-warm-bg flex flex-col justify-between p-4 sm:p-8">
       {/* 顶部主导航栏 */}
-      <header className="w-full max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 pb-6 border-b border-warm-border/60">
-        <SurfaceLogo size="md" showText={true} />
+      <header className="w-full max-w-4xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 pb-4 border-b border-warm-border/60">
+        <div className="w-full sm:w-auto flex items-center justify-between">
+          <SurfaceLogo size="md" showText={true} />
+          <div className="sm:hidden">
+            <EngineBadge />
+          </div>
+        </div>
 
-        <div className="flex items-center gap-1.5 bg-warm-subtle/80 p-1 rounded-game-sm border border-warm-border">
-          <button
-            type="button"
-            onClick={() => setActiveTab('play')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition ${
-              activeTab === 'play'
-                ? 'bg-white shadow-2xs text-sage-700'
-                : 'text-ink-muted hover:text-ink-text'
-            }`}
-          >
-            <Gamepad2 className="w-3.5 h-3.5" />
-            <span>游戏</span>
-          </button>
+        <div className="w-full sm:w-auto flex items-center justify-center sm:justify-end gap-2">
+          <div className="flex items-center gap-1 bg-warm-subtle/80 p-1 rounded-game-sm border border-warm-border">
+            <button
+              type="button"
+              onClick={() => setActiveTab('play')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition ${
+                activeTab === 'play'
+                  ? 'bg-white shadow-2xs text-sage-700'
+                  : 'text-ink-muted hover:text-ink-text'
+              }`}
+            >
+              <Gamepad2 className="w-3.5 h-3.5" />
+              <span>游戏</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('history')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition relative ${
-              activeTab === 'history'
-                ? 'bg-white shadow-2xs text-sage-700'
-                : 'text-ink-muted hover:text-ink-text'
-            }`}
-          >
-            <History className="w-3.5 h-3.5" />
-            <span>历史</span>
-            {recentRooms.length > 0 && (
-              <span className="w-4 h-4 rounded-full bg-sage-500 text-white text-[10px] flex items-center justify-center font-mono">
-                {recentRooms.length}
-              </span>
-            )}
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('history')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition relative ${
+                activeTab === 'history'
+                  ? 'bg-white shadow-2xs text-sage-700'
+                  : 'text-ink-muted hover:text-ink-text'
+              }`}
+            >
+              <History className="w-3.5 h-3.5" />
+              <span>历史</span>
+              {recentRooms.length > 0 && (
+                <span className="w-4 h-4 rounded-full bg-sage-500 text-white text-[10px] flex items-center justify-center font-mono">
+                  {recentRooms.length}
+                </span>
+              )}
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('prefs')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition ${
-              activeTab === 'prefs'
-                ? 'bg-white shadow-2xs text-sage-700'
-                : 'text-ink-muted hover:text-ink-text'
-            }`}
-          >
-            <Settings className="w-3.5 h-3.5" />
-            <span>偏好</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('prefs')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition ${
+                activeTab === 'prefs'
+                  ? 'bg-white shadow-2xs text-sage-700'
+                  : 'text-ink-muted hover:text-ink-text'
+              }`}
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span>偏好</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab('rules')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition ${
-              activeTab === 'rules'
-                ? 'bg-white shadow-2xs text-sage-700'
-                : 'text-ink-muted hover:text-ink-text'
-            }`}
-          >
-            <HelpCircle className="w-3.5 h-3.5" />
-            <span>规则</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('rules')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold transition ${
+                activeTab === 'rules'
+                  ? 'bg-white shadow-2xs text-sage-700'
+                  : 'text-ink-muted hover:text-ink-text'
+              }`}
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              <span>规则</span>
+            </button>
+          </div>
 
-          <div className="h-4 w-px bg-warm-border mx-0.5" />
-          <EngineBadge />
+          <div className="hidden sm:block">
+            <EngineBadge />
+          </div>
         </div>
       </header>
 

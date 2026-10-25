@@ -357,24 +357,30 @@ export function MasterControls({ state, roomCode, playerToken }: Props) {
           <div className="text-xl font-black text-ink-text py-1">
             “{pendingGuess.guess_text}”
           </div>
-          <div className="flex items-center gap-3 pt-1">
+          <div className="grid grid-cols-2 gap-2.5 pt-1">
             <button
               type="button"
               onClick={() => handleAdjudicate('correct')}
               disabled={adjudicating}
-              className="flex-1 py-3 bg-status-ok hover:opacity-90 active:scale-98 text-white font-black text-sm rounded-game-sm shadow transition flex items-center justify-center gap-1.5"
+              className="py-2.5 px-3 bg-status-ok hover:opacity-90 active:scale-98 text-white font-bold rounded-game-sm shadow transition flex flex-col items-center justify-center gap-0.5"
             >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>猜中了！(揭晓答案并结算)</span>
+              <div className="flex items-center gap-1.5 text-sm font-black whitespace-nowrap">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>猜中了！</span>
+              </div>
+              <span className="text-[10px] text-white/80 font-normal whitespace-nowrap">揭晓并结算</span>
             </button>
             <button
               type="button"
               onClick={() => handleAdjudicate('incorrect')}
               disabled={adjudicating}
-              className="flex-1 py-3 bg-status-err hover:opacity-90 active:scale-98 text-white font-black text-sm rounded-game-sm shadow transition flex items-center justify-center gap-1.5"
+              className="py-2.5 px-3 bg-status-err hover:opacity-90 active:scale-98 text-white font-bold rounded-game-sm shadow transition flex flex-col items-center justify-center gap-0.5"
             >
-              <XCircle className="w-4 h-4" />
-              <span>没猜中 (对局继续)</span>
+              <div className="flex items-center gap-1.5 text-sm font-black whitespace-nowrap">
+                <XCircle className="w-4 h-4 shrink-0" />
+                <span>没猜中</span>
+              </div>
+              <span className="text-[10px] text-white/80 font-normal whitespace-nowrap">对局继续</span>
             </button>
           </div>
         </div>

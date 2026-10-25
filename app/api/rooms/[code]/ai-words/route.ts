@@ -43,7 +43,7 @@ export async function POST(
         const aiWords = await generateWordCandidates({
           theme,
           difficulty,
-          count: 9,
+          count: 6,
           excludeWords,
         });
 
@@ -65,8 +65,8 @@ export async function POST(
       }
     }
 
-    // 2. 降级回退：从扩充后的本地词库中排除已出词条后乱序抽取 9 个
-    const fallback = getRandomWordsByFilter(theme, difficulty, 9, excludeWords);
+    // 2. 降级回退：从扩充后的本地词库中排除已出词条后乱序抽取 6 个
+    const fallback = getRandomWordsByFilter(theme, difficulty, 6, excludeWords);
     return NextResponse.json({
       success: true,
       isAI: false,

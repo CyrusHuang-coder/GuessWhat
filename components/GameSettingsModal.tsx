@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Difficulty, GameMode, GameStateDTO } from '@/lib/types/game';
 import { THEMES } from '@/lib/data/wordBank';
-import { Settings2, Clock, Zap, Sparkles, Check } from 'lucide-react';
+import { Settings2, Clock, Zap, Sparkles, Check, ArrowLeftRight } from 'lucide-react';
 
 interface Props {
   state: GameStateDTO;
@@ -21,9 +21,31 @@ export function GameSettingsModal({ state, roomCode, playerToken }: Props) {
   const [mode, setMode] = useState<GameMode>('normal'); // 默认普通模式（允许一直猜）
   const [maxQuestions, setMaxQuestions] = useState<number>(30); // 挑战模式默认 30 次
   const [submitting, setSubmitting] = useState(false);
+  const [swappingRoles, setSwappingRoles] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (session?.status !== 'setting_selection') return null;
+
+  const handleSwapRoles = async () => {
+    if (swappingRoles) return;
+    setSwappingRoles(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/rooms/${roomCode}/roles/swap`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-player-token': playerToken,
+        },
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+    } catch (err: any) {
+      setError(err.message || '调换角色失败');
+    } finally {
+      setSwappingRoles(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,14 +99,30 @@ export function GameSettingsModal({ state, roomCode, playerToken }: Props) {
   // 出题人视角等待
   if (!isGuesser) {
     return (
-      <div className="bg-white rounded-game border border-warm-border p-8 text-center max-w-md mx-auto my-12 shadow-board">
-        <div className="w-12 h-12 rounded-full bg-sage-100 text-sage-600 flex items-center justify-center mx-auto mb-4 animate-spin">
+      <div className="bg-white rounded-game border border-warm-border p-8 text-center max-w-md mx-auto my-12 shadow-board space-y-4">
+        <div className="w-12 h-12 rounded-full bg-sage-100 text-sage-600 flex items-center justify-center mx-auto animate-spin">
           <Settings2 className="w-6 h-6" />
         </div>
-        <h3 className="text-lg font-bold text-ink-text mb-2">等待猜词人选择游戏规则</h3>
-        <p className="text-sm text-ink-muted leading-relaxed">
-          猜词人正在选择本轮的主题、难度与玩法模式（默认允许一直提问推理）。设置完成后将由您选定秘密词条。
-        </p>
+        <div>
+          <h3 className="text-lg font-bold text-ink-text mb-1">等待猜词人选择游戏规则</h3>
+          <p className="text-xs text-ink-muted leading-relaxed">
+            猜词人正在选择本轮的主题、难度与玩法模式。设置完成后将由您选定秘密词条。
+          </p>
+        </div>
+
+        {state.room.guest_player_id && (
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={handleSwapRoles}
+              disabled={swappingRoles}
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-sage-800 bg-sage-50 hover:bg-sage-100 border border-sage-200 rounded-game-sm transition shadow-2xs"
+            >
+              <ArrowLeftRight className={`w-3.5 h-3.5 text-sage-600 ${swappingRoles ? 'animate-spin' : ''}`} />
+              <span>我想来猜词 (互换身份)</span>
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -92,14 +130,29 @@ export function GameSettingsModal({ state, roomCode, playerToken }: Props) {
   // 猜词人设置面板
   return (
     <div className="bg-white rounded-game border border-warm-border p-6 md:p-8 max-w-2xl mx-auto my-6 shadow-board">
-      <div className="flex items-center gap-3 pb-4 border-b border-warm-border mb-6">
-        <div className="w-10 h-10 rounded-game-sm bg-sage-100 text-sage-600 flex items-center justify-center">
-          <Settings2 className="w-5 h-5" />
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-warm-border mb-6">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-game-sm bg-sage-100 text-sage-600 flex items-center justify-center">
+            <Settings2 className="w-5 h-5" />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-ink-text">对局初始化设置</h2>
+            <p className="text-xs text-ink-muted">制定本轮的推理范围与挑战规则，随后交给出题人确定秘密词条</p>
+          </div>
         </div>
-        <div>
-          <h2 className="text-lg font-bold text-ink-text">对局初始化设置</h2>
-          <p className="text-xs text-ink-muted">制定本轮的推理范围与挑战规则，随后交给出题人确定秘密词条</p>
-        </div>
+
+        {state.room.guest_player_id && (
+          <button
+            type="button"
+            onClick={handleSwapRoles}
+            disabled={swappingRoles}
+            className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-sage-800 bg-sage-50 hover:bg-sage-100 border border-sage-200 rounded-game-sm transition shrink-0"
+            title="我想担任出题人，让对方来猜词"
+          >
+            <ArrowLeftRight className={`w-3.5 h-3.5 text-sage-600 ${swappingRoles ? 'animate-spin' : ''}`} />
+            <span>我想出题 (互换身份)</span>
+          </button>
+        )}
       </div>
 
       {error && (

@@ -280,6 +280,36 @@ export class MemoryRoomStore implements IRoomStore {
     return { ...session };
   }
 
+  async swapInitialRoles(code: string, playerToken: string): Promise<GameSession> {
+    const uppercaseCode = code.toUpperCase();
+    const room = this.rooms.get(uppercaseCode);
+    if (!room) throw new Error('房间不存在');
+
+    const sessionId = this.currentSessionByRoom.get(uppercaseCode);
+    if (!sessionId) throw new Error('对局未初始化');
+    const session = this.sessions.get(sessionId)!;
+
+    if (session.status !== 'setting_selection') {
+      throw new Error('只有在对局准备阶段（设定规则前）可以调整角色');
+    }
+
+    if (playerToken !== room.host_player_id && playerToken !== room.guest_player_id) {
+      throw new Error('只有房间内的玩家可以调整角色');
+    }
+
+    if (!room.guest_player_id) {
+      throw new Error('等待第二位玩家进入房间后方可互换出题与猜词身份');
+    }
+
+    const oldMaster = session.question_master_id;
+    const oldGuesser = session.guesser_id;
+    session.question_master_id = oldGuesser;
+    session.guesser_id = oldMaster;
+
+    realtimeBroadcaster.notify(uppercaseCode, 'ROLES_SWAPPED');
+    return { ...session };
+  }
+
   async setWord(
     code: string,
     playerToken: string,

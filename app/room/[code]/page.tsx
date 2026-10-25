@@ -335,7 +335,11 @@ export default function RoomPage({ params }: PageProps) {
   return (
     <div className="min-h-screen flex flex-col bg-warm-bg">
       {/* 顶部房间栏 */}
-      <RoomHeader state={gameState} />
+      <RoomHeader
+        state={gameState}
+        playerToken={playerToken}
+        onRefresh={() => fetchState()}
+      />
 
       {/* 主工作区 */}
       <main className="flex-1 max-w-6xl w-full mx-auto p-4 sm:p-6 flex flex-col justify-between">

@@ -293,6 +293,32 @@ export class KvRoomStore implements IRoomStore {
     return { ...data.session };
   }
 
+  async swapInitialRoles(code: string, playerToken: string): Promise<GameSession> {
+    const data = await this.getStored(code);
+    if (!data || !data.session) throw new Error('对局未初始化');
+
+    if (data.session.status !== 'setting_selection') {
+      throw new Error('只有在对局准备阶段（设定规则前）可以调整角色');
+    }
+
+    if (playerToken !== data.room.host_player_id && playerToken !== data.room.guest_player_id) {
+      throw new Error('只有房间内的玩家可以调整角色');
+    }
+
+    if (!data.room.guest_player_id) {
+      throw new Error('等待第二位玩家进入房间后方可互换出题与猜词身份');
+    }
+
+    const oldMaster = data.session.question_master_id;
+    const oldGuesser = data.session.guesser_id;
+    data.session.question_master_id = oldGuesser;
+    data.session.guesser_id = oldMaster;
+
+    await this.saveStored(code, data);
+    realtimeBroadcaster.notify(code.toUpperCase(), 'ROLES_SWAPPED');
+    return { ...data.session };
+  }
+
   async setWord(
     code: string,
     playerToken: string,

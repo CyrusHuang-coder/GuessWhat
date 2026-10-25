@@ -471,7 +471,7 @@ export async function generateWordCandidates(params: {
   count?: number;
   excludeWords?: string[];
 }): Promise<AICandidateWord[]> {
-  const count = params.count || 9;
+  const count = params.count || 6;
   const excludeText =
     params.excludeWords && params.excludeWords.length > 0
       ? `\n6. 排除列表：绝不要生成以下近期已经出现过的词条：${params.excludeWords.slice(-30).join('、')}。`

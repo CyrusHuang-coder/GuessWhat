@@ -32,6 +32,8 @@ export interface IRoomStore {
 
   revertToSettingSelection(code: string, playerToken: string): Promise<GameSession>;
 
+  swapInitialRoles(code: string, playerToken: string): Promise<GameSession>;
+
   setWord(
     code: string,
     playerToken: string,

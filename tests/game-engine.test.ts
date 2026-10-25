@@ -366,5 +366,35 @@ describe('游戏状态机与规则核心流程测试', () => {
       '无法直接回退'
     );
   });
+
+  it('对局准备阶段双方调换角色（互换攻守）测试', async () => {
+    const { room, playerToken: hostToken } = await store.createRoom('房主小王');
+    const { playerToken: guestToken } = await store.joinRoom(room.code, '好友小李');
+
+    let stateHost = await store.getRoomState(room.code, hostToken);
+    let stateGuest = await store.getRoomState(room.code, guestToken);
+
+    // 默认：房主是出题人，好友是猜词人
+    expect(stateHost?.myRole).toBe('question_master');
+    expect(stateGuest?.myRole).toBe('guesser');
+
+    // 好友小李发起调换角色（想出题）
+    const swapped = await store.swapInitialRoles(room.code, guestToken);
+    expect(swapped.question_master_id).toBe(guestToken);
+    expect(swapped.guesser_id).toBe(hostToken);
+
+    // 重新拉取状态校验
+    stateHost = await store.getRoomState(room.code, hostToken);
+    stateGuest = await store.getRoomState(room.code, guestToken);
+    expect(stateHost?.myRole).toBe('guesser');
+    expect(stateGuest?.myRole).toBe('question_master');
+
+    // 房主小王再次点击互换（换回来）
+    await store.swapInitialRoles(room.code, hostToken);
+    stateHost = await store.getRoomState(room.code, hostToken);
+    stateGuest = await store.getRoomState(room.code, guestToken);
+    expect(stateHost?.myRole).toBe('question_master');
+    expect(stateGuest?.myRole).toBe('guesser');
+  });
 });
 

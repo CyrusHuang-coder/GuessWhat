@@ -287,6 +287,38 @@ export class SupabaseRoomStore implements IRoomStore {
     return updated;
   }
 
+  async swapInitialRoles(code: string, playerToken: string): Promise<GameSession> {
+    const supabase = this.ensureClient();
+    const state = await this.getRoomState(code, playerToken);
+    if (!state?.session) throw new Error('对局未初始化');
+
+    if (state.session.status !== 'setting_selection') {
+      throw new Error('只有在对局准备阶段（设定规则前）可以调整角色');
+    }
+
+    if (playerToken !== state.room.host_player_id && playerToken !== state.room.guest_player_id) {
+      throw new Error('只有房间内的玩家可以调整角色');
+    }
+
+    if (!state.room.guest_player_id) {
+      throw new Error('等待第二位玩家进入房间后方可互换出题与猜词身份');
+    }
+
+    const { data: updated, error } = await supabase
+      .from('game_sessions')
+      .update({
+        question_master_id: state.session.guesser_id,
+        guesser_id: state.session.question_master_id,
+      })
+      .eq('id', state.session.id)
+      .select()
+      .single();
+
+    if (error || !updated) throw new Error(error?.message || '互换角色失败');
+    realtimeBroadcaster.notify(code.toUpperCase(), 'ROLES_SWAPPED');
+    return updated;
+  }
+
   async setWord(
     code: string,
     playerToken: string,

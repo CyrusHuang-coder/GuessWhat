@@ -125,3 +125,4 @@ export function saveUserPreferences(prefs: Partial<UserPreferences>) {
     // ignore
   }
 }
+

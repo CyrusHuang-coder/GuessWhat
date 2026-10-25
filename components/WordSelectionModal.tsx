@@ -38,7 +38,7 @@ export function WordSelectionModal({ state, roomCode, playerToken }: Props) {
         if (prev.length > 0 && prev[0].theme === session.theme) {
           return prev;
         }
-        const initial = getRandomWordsByFilter(session.theme || undefined, session.difficulty, 9);
+        const initial = getRandomWordsByFilter(session.theme || undefined, session.difficulty, 6);
         initial.forEach((w) => seenWordsRef.current.add(w.name));
         return initial;
       });
@@ -70,14 +70,14 @@ export function WordSelectionModal({ state, roomCode, playerToken }: Props) {
         setIsAIGenerated(Boolean(data.isAI));
       } else {
         // 优雅降级本地抽取
-        const localWords = getRandomWordsByFilter(session.theme || undefined, session.difficulty, 9, excludeList);
+        const localWords = getRandomWordsByFilter(session.theme || undefined, session.difficulty, 6, excludeList);
         localWords.forEach((w) => seenWordsRef.current.add(w.name));
         setCandidates(localWords);
         setIsAIGenerated(false);
       }
     } catch (err: any) {
       // 容错降级
-      const localWords = getRandomWordsByFilter(session.theme || undefined, session.difficulty, 9, excludeList);
+      const localWords = getRandomWordsByFilter(session.theme || undefined, session.difficulty, 6, excludeList);
       localWords.forEach((w) => seenWordsRef.current.add(w.name));
       setCandidates(localWords);
       setIsAIGenerated(false);
@@ -235,7 +235,7 @@ export function WordSelectionModal({ state, roomCode, playerToken }: Props) {
                 : 'text-ink-muted hover:text-ink-text'
             }`}
           >
-            从推荐词条中挑选 (支持AI换一批)
+            精选词库与AI推荐
           </button>
           <button
             type="button"
